@@ -128,11 +128,12 @@ else:
         title=f"부동산 4분면 지수 경로 ({start_date} ~ {end_date})",
         xaxis_title="매매지수",
         yaxis_title="전세지수",
-        #height=700,
+        height=700,
         showlegend=True
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
