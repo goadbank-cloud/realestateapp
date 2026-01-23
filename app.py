@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go  # 세부 시각화 컨트롤을 위해 추가
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
@@ -33,7 +32,6 @@ def load_data(file_path):
     df['날짜'] = pd.to_datetime(df['날짜'])
     return df
 
-# 데이터 로드 (파일 경로 확인 필요)
 file_path = "주간시계열.xlsx"
 logo_image_path = "jak_logo.png" 
 df = load_data(file_path)
@@ -55,17 +53,16 @@ start_date, end_date = selected_dates
 all_regions = df["지역"].unique()
 selected_regions = st.sidebar.multiselect("지역 선택", options=all_regions, default=all_regions[:5])
 
-st.sidebar.header("🎨 지역별 색상")
+st.sidebar.header("🎨 색상을 지정하세요")
 color_map = {}
-for i, region in enumerate(selected_regions):
-    # 기본 색상 리스트 (선택 안했을 때 대비)
-    default_colors = px.colors.qualitative.Plotly
-    color_map[region] = st.sidebar.color_picker(f"'{region}'", default_colors[i % len(default_colors)])
+for region in selected_regions:
+    selected_color = st.sidebar.color_picker(f"'{region}' 색상", '#000000')
+    color_map[region] = selected_color
 
 # --- 메인 화면 ---
 col1_main, col2_main = st.columns([1, 10])
 with col1_main:
-    try: st.image(logo_image_path, width=70)
+    try: st.image(logo_image_path, width=700)
     except: pass
 with col2_main:
     st.title("부동산 매매/전세 가격 경로 분석")
@@ -78,87 +75,61 @@ df_sel = df[mask]
 
 # --- 그래프 시각화 ---
 if df_sel.empty:
-    st.warning("선택한 조건에 해당하는 데이터가 없습니다.")
+    st.warning("데이터가 없습니다.")
 else:
     df_sel_sorted = df_sel.sort_values(by=['지역', '날짜'])
 
-    # 1. 기본 라인 생성 (경로선)
     fig = px.line(
         df_sel_sorted,
         x="매매지수",
         y="전세지수",
         color="지역",
+        markers=True,
         hover_data=['날짜', '지역'],
-        color_discrete_map=color_map,
-        category_orders={"지역": selected_regions}
+        color_discrete_map=color_map
     )
-    
-    # 선의 투명도를 조절하여 흐름을 부드럽게 표현
-    fig.update_traces(line=dict(width=2.5), opacity=0.6)
 
-    # 2. 지역별 특수 표식 추가 (시작점, 끝점, 화살표)
+    # --- 화살표 및 지역명 표시 ---
     for region in selected_regions:
         region_df = df_sel_sorted[df_sel_sorted['지역'] == region]
-        if len(region_df) == 0: continue
+        if len(region_df) < 2: continue # 포인트가 2개 이상일 때만 화살표 가능
 
-        first_row = region_df.iloc[0]
+        # 마지막 포인트(머리)와 직전 포인트(꼬리) 추출
         last_row = region_df.iloc[-1]
-        
-        # 시작점 표시 (작은 회색 원)
-        fig.add_trace(go.Scatter(
-            x=[first_row['매매지수']], y=[first_row['전세지수']],
-            mode='markers+text',
-            marker=dict(size=8, color='lightgrey', symbol='circle'),
-            text=["시작"], textposition="bottom center",
-            showlegend=False, hoverinfo='skip'
-        ))
+        prev_row = region_df.iloc[-2]
 
-        # 최신점 강조 (큰 마커)
-        fig.add_trace(go.Scatter(
-            x=[last_row['매매지수']], y=[last_row['전세지수']],
-            mode='markers',
-            marker=dict(size=12, color=color_map.get(region), symbol='circle',
-                        line=dict(width=2, color='white')),
-            showlegend=False, hoverinfo='skip'
-        ))
-
-        # 화살표 추가 (직전 데이터 -> 최신 데이터 방향)
-        if len(region_df) > 1:
-            prev_row = region_df.iloc[-2]
-            fig.add_annotation(
-                x=last_row['매매지수'], y=last_row['전세지수'],
-                ax=prev_row['매매지수'], ay=prev_row['전세지수'],
-                xref="x", yref="y", axref="x", ayref="y",
-                showarrow=True, arrowhead=3, arrowsize=1.5, arrowwidth=2.5,
-                arrowcolor=color_map.get(region)
-            )
-
-        # 지역명 레이블 (최신 지점에 말풍선처럼 표시)
+        # 화살표 추가
         fig.add_annotation(
-            x=last_row['매매지수'], y=last_row['전세지수'],
-            text=f" 🚩 {region} ",
-            showarrow=False,
-            yshift=18,
-            font=dict(size=12, color="white"),
-            bgcolor=color_map.get(region),
-            borderpad=3,
-            opacity=0.9
+            x=last_row['매매지수'],  # 화살표가 가리킬 곳 (끝점)
+            y=last_row['전세지수'],
+            ax=prev_row['매매지수'], # 화살표가 시작될 곳 (이전 점)
+            ay=prev_row['전세지수'],
+            xref="x", yref="y",
+            axref="x", ayref="y",
+            showarrow=True,
+            arrowhead=2, # 화살표 머리 모양 (1~8)
+            arrowsize=1.5,
+            arrowwidth=2,
+            arrowcolor=color_map.get(region, "black")
         )
 
-    # 3. 레이아웃 최적화
+        # 지역 이름 텍스트 추가 (화살표 끝에 표시)
+        fig.add_annotation(
+            x=last_row['매매지수'],
+            y=last_row['전세지수'],
+            text=f"<b>{region}</b>",
+            showarrow=False,
+            yshift=15,
+            font=dict(size=12, color=color_map.get(region, "black")),
+            bgcolor="rgba(255, 255, 255, 0.8)"
+        )
+
     fig.update_layout(
         title=f"부동산 4분면 지수 경로 ({start_date} ~ {end_date})",
-        xaxis_title="매매지수 (X축)",
-        yaxis_title="전세지수 (Y축)",
-        height=750,
-        hovermode="closest",
-        plot_bgcolor="white",
-        xaxis=dict(gridcolor='lightgrey', zerolinecolor='grey'),
-        yaxis=dict(gridcolor='lightgrey', zerolinecolor='grey')
+        xaxis_title="매매지수",
+        yaxis_title="전세지수",
+        height=700,
+        showlegend=True
     )
 
     st.plotly_chart(fig, use_container_width=True)
-
-    # 데이터 요약 정보 제공
-    with st.expander("데이터 요약 보기"):
-        st.dataframe(df_sel_sorted)
