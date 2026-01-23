@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
@@ -37,7 +38,7 @@ logo_image_path = "jak_logo.png"
 df = load_data(file_path)
 
 # --- 사이드바 ---
-st.sidebar.header("🗓️ 필터를 선택하세요")
+st.sidebar.header("🗓️ 필터")
 selected_dates = st.sidebar.date_input(
     "날짜 범위",
     value=(df["날짜"].min(), df["날짜"].max()),
@@ -46,90 +47,106 @@ selected_dates = st.sidebar.date_input(
 )
 
 if len(selected_dates) != 2:
-    st.sidebar.error("날짜 범위를 올바르게 선택해주세요.")
+    st.sidebar.error("날짜 범위를 선택하세요.")
     st.stop()
 start_date, end_date = selected_dates
 
 all_regions = df["지역"].unique()
-selected_regions = st.sidebar.multiselect("지역 선택", options=all_regions, default=all_regions[:5])
+selected_regions = st.sidebar.multiselect("지역 선택", options=all_regions, default=all_regions[:3])
 
-st.sidebar.header("🎨 색상을 지정하세요")
-color_map = {}
-for region in selected_regions:
-    selected_color = st.sidebar.color_picker(f"'{region}' 색상", '#000000')
-    color_map[region] = selected_color
+st.sidebar.header("🎨 색상")
+color_map = {reg: st.sidebar.color_picker(f"{reg}", px.colors.qualitative.Plotly[i%10]) 
+             for i, reg in enumerate(selected_regions)}
 
 # --- 메인 화면 ---
-col1_main, col2_main = st.columns([1, 10])
-with col1_main:
-    try: st.image(logo_image_path, width=700)
-    except: pass
-with col2_main:
-    st.title("부동산 매매/전세 가격 경로 분석")
+st.title("부동산 매매/전세 가격 경로 분석")
 
 # --- 데이터 필터링 ---
 mask = (df["날짜"] >= pd.to_datetime(start_date)) & \
        (df["날짜"] <= pd.to_datetime(end_date)) & \
        (df["지역"].isin(selected_regions))
-df_sel = df[mask]
+df_sel = df[mask].sort_values(['지역', '날짜'])
 
-# --- 그래프 시각화 ---
 if df_sel.empty:
     st.warning("데이터가 없습니다.")
 else:
-    df_sel_sorted = df_sel.sort_values(by=['지역', '날짜'])
+    # 기본 라인 차트 생성
+    fig = go.Figure()
 
-    fig = px.line(
-        df_sel_sorted,
-        x="매매지수",
-        y="전세지수",
-        color="지역",
-        markers=True,
-        hover_data=['날짜', '지역'],
-        color_discrete_map=color_map
-    )
-
-    # --- 화살표 및 지역명 표시 ---
     for region in selected_regions:
-        region_df = df_sel_sorted[df_sel_sorted['지역'] == region]
-        if len(region_df) < 2: continue # 포인트가 2개 이상일 때만 화살표 가능
+        rdf = df_sel[df_sel['지역'] == region]
+        if rdf.empty: continue
+        
+        reg_color = color_map.get(region, "black")
 
-        # 마지막 포인트(머리)와 직전 포인트(꼬리) 추출
-        last_row = region_df.iloc[-1]
-        prev_row = region_df.iloc[-2]
-
-        # 화살표 추가
+        # 1. 경로 선 추가
+        fig.add_trace(go.Scatter(
+            x=rdf['매매지수'], y=rdf['전세지수'],
+            mode='lines+markers',
+            name=region,
+            line=dict(color=reg_color, width=2),
+            marker=dict(size=4, opacity=0.5),
+            hoverinfo='text',
+            text=[f"{region}<br>{d.strftime('%Y-%m-%d')}<br>매매:{s}<br>전세:{r}" 
+                  for d, s, r in zip(rdf['날짜'], rdf['매매지수'], rdf['전세지수'])]
+        ))
+        
+        # 3. 최신 지점(현재) 강조 레이블
+        last = rdf.iloc[-1]
         fig.add_annotation(
-            x=last_row['매매지수'],  # 화살표가 가리킬 곳 (끝점)
-            y=last_row['전세지수'],
-            ax=prev_row['매매지수'], # 화살표가 시작될 곳 (이전 점)
-            ay=prev_row['전세지수'],
-            xref="x", yref="y",
-            axref="x", ayref="y",
-            showarrow=True,
-            arrowhead=2, # 화살표 머리 모양 (1~8)
-            arrowsize=1.5,
-            arrowwidth=2,
-            arrowcolor=color_map.get(region, "black")
+            x=last['매매지수'], y=last['전세지수'],
+            text=f"<b>{region} (최근)</b>",
+            showarrow=False, yshift=15,
+            font=dict(color="white", size=11),
+            bgcolor=reg_color, borderpad=4, opacity=1
         )
 
-        # 지역 이름 텍스트 추가 (화살표 끝에 표시)
-        fig.add_annotation(
-            x=last_row['매매지수'],
-            y=last_row['전세지수'],
-            text=f"<b>{region}</b>",
-            showarrow=False,
-            yshift=15,
-            font=dict(size=12, color=color_map.get(region, "black")),
-            bgcolor="rgba(255, 255, 255, 0.8)"
-        )
+        # 5. 종료 지점(가장 최근 날짜) 표시
+        last = rdf.iloc[-1]
+        fig.add_trace(go.Scatter(
+            x=[last['매매지수']], y=[last['전세지수']],
+            mode='markers+text',
+            text=["recent"], # 또는 "현재"
+            textposition="top center", # 시작점(bottom)과 겹치지 않게 위쪽으로 설정
+            marker=dict(color=reg_color, size=10, symbol="circle"), # 지역 색상을 그대로 사용
+            showlegend=False
+        ))
 
+        first = rdf.iloc[0]
+        fig.add_trace(go.Scatter(
+            x=[first['매매지수']], y=[first['전세지수']],
+            mode='markers+text',
+            text=["START"], textposition="bottom center",
+            marker=dict(color="grey", size=8, symbol="circle"),
+            showlegend=False
+        ))
+
+    # 레이아웃 설정
     fig.update_layout(
-        title=f"부동산 4분면 지수 경로 ({start_date} ~ {end_date})",
-        xaxis_title="매매지수",
-        yaxis_title="전세지수",
+        title=f"부동산 지수 경로 분석 ({start_date} ~ {end_date})",
+        xaxis_title="매매지수", yaxis_title="전세지수",
+        template="plotly_white",
         height=700,
-        showlegend=True
+        hovermode="closest"
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
