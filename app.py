@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 # --- 페이지 기본 설정 ---
 st.set_page_config(
     page_title="부동산 지수 4분면 분석",
-    page_icon="✒️",
+    page_icon="",
     layout="wide"
 )
 
@@ -59,7 +59,16 @@ color_map = {reg: st.sidebar.color_picker(f"{reg}", px.colors.qualitative.Plotly
              for i, reg in enumerate(selected_regions)}
 
 # --- 메인 화면 ---
-st.title("부동산 매매/전세 가격 경로 분석")
+col1, col2 = st.columns([1, 8]) 
+
+with col1:
+    try:
+        st.image(logo_image_path, use_container_width=True) 
+    except Exception as e:
+        st.write("🖼️ LOGO")
+
+with col2:
+    st.title("작부동산 매전지수 4분면")
 
 # --- 데이터 필터링 ---
 mask = (df["날짜"] >= pd.to_datetime(start_date)) & \
@@ -106,9 +115,9 @@ else:
         fig.add_trace(go.Scatter(
             x=[last['매매지수']], y=[last['전세지수']],
             mode='markers+text',
-            text=["recent"], # 또는 "현재"
-            textposition="top center", # 시작점(bottom)과 겹치지 않게 위쪽으로 설정
-            marker=dict(color=reg_color, size=10, symbol="circle"), # 지역 색상을 그대로 사용
+            text=["recent"], 
+            textposition="top center", 
+            marker=dict(color=reg_color, size=10, symbol="circle"), 
             showlegend=False
         ))
 
@@ -131,6 +140,7 @@ else:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
