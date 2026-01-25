@@ -132,7 +132,7 @@ else:
 
     # 레이아웃 설정
     fig.update_layout(
-        title=f"부동산 지수 경로 분석 ({start_date} ~ {end_date})",
+        title=f"JAK작부동산 매전지수 경로 분석 ({start_date} ~ {end_date})",
         xaxis_title="매매지수", yaxis_title="전세지수",
         template="plotly_white",
         height=700,
@@ -140,6 +140,7 @@ else:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
