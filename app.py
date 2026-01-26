@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
-    page_title="부동산 지수 4분면 분석",
+    page_title="부동산 지수 사사분면 분석",
     page_icon="",
     layout="wide"
 )
@@ -140,6 +140,7 @@ else:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
