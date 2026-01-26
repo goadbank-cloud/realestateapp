@@ -68,7 +68,7 @@ with col1:
         st.write("🖼️ LOGO")
 
 with col2:
-    st.title("작부동산 매전지수 4분면")
+    st.title("작부동산 매전지수 사분면")
 
 # --- 데이터 필터링 ---
 mask = (df["날짜"] >= pd.to_datetime(start_date)) & \
@@ -140,6 +140,7 @@ else:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 
