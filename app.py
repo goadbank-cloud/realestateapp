@@ -203,7 +203,7 @@ else:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(t=5, b=10, l=10, r=10),
         hovermode="x unified",
-        bargap=0.7
+        #bargap=0.7
     )
 
     fig2.update_xaxes(
@@ -216,6 +216,7 @@ else:
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
