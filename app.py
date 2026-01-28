@@ -182,6 +182,12 @@ else:
 
     df_bar['날짜_표시'] = df_bar['날짜'].dt.strftime('%Y-%m-%d')
 
+    num_regions = len(selected_regions)
+    
+    dynamic_spacing = 0.05 if num_regions >= 8 else 0.1 
+    
+    row_height = 350 if num_regions >= 8 else 400
+
     fig2 = px.bar(
         df_bar,
         x='날짜_표시',           
@@ -190,7 +196,7 @@ else:
         barmode='group',
         facet_col='지역',
         facet_col_wrap=1,
-        facet_row_spacing=0.15,
+        facet_row_spacing=dynamic_spacing,
         color_discrete_map={'매매증감': '#EF553B', '전세증감': '#636EFA'},
         labels={'증감률': '증감률 (%)', '날짜_표시': ''},
         hover_data={'지역': True, '날짜_표시': True, '증감률': ':.2f'}
@@ -198,12 +204,11 @@ else:
 
     fig2.update_layout(
         title=f"jak 작부동산 매매/전세 증감률 ({start_date} ~ {end_date})",
-        height=400 * len(selected_regions),
+        height=row_height * num_regions,
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(t=5, b=10, l=10, r=10),
         hovermode="x unified",
-        #bargap=0.7
     )
 
     fig2.update_xaxes(
@@ -216,6 +221,7 @@ else:
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
