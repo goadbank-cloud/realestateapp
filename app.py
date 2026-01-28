@@ -195,12 +195,18 @@ else:
     )
 
     fig2.update_layout(
-        height=400 * len(selected_regions), 
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=80, b=40, l=40, r=40)
+        xaxis=dict(
+            rangeslider=dict(visible=True), 
+            type="date")
+    )
+    fig2.update_xaxes(
+        tickangle=45,          
+        dtick="M1",            
+        tickformat="%y.%m.%d", 
+        showgrid=True
     )
 
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
+
