@@ -201,11 +201,7 @@ else:
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         margin=dict(t=80, b=40, l=40, r=40)
     )
-    fig2.update_layout(
-        xaxis=dict(
-            rangeslider=dict(visible=True), 
-            type="date")
-    )
+
     fig2.update_xaxes(
         matches=None,          
         showticklabels=True,   
@@ -217,6 +213,7 @@ else:
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
