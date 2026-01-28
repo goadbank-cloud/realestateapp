@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
-    page_title="JAK 작부동산 매전지수 사분면 분석",
+    page_title="부동산 지수 4분면 분석",
     page_icon="",
     layout="wide"
 )
@@ -32,10 +32,35 @@ def load_data(file_path):
     df = pd.merge(sale_melt, rent_melt, on=['날짜', '지역'])
     df['날짜'] = pd.to_datetime(df['날짜'])
     return df
+    
+@st.cache_data
+def load_change_data(file_path):
+    try:
+        # 증감 시트는 보통 '매매증감', '전세증감'으로 명명됨 (시트명 확인 필요)
+        sale_chg = pd.read_excel(file_path, sheet_name="1.매매증감", skiprows=[0, 2, 3])
+        rent_chg = pd.read_excel(file_path, sheet_name="2.전세증감", skiprows=[0, 2, 3])
+    except Exception as e:
+        st.error(f"증감 데이터 로드 오류: {e}")
+        return None
 
-file_path = "주간시계열.xlsx"
-logo_image_path = "jak_logo.png" 
+    sale_chg = sale_chg.dropna(subset=['구분']).fillna(0).infer_objects(copy=False)
+    rent_chg = rent_chg.dropna(subset=['구분']).fillna(0).infer_objects(copy=False)
+
+    sale_chg.rename(columns={'구분': '날짜'}, inplace=True)
+    rent_chg.rename(columns={'구분': '날짜'}, inplace=True)
+
+    s_melt = sale_chg.melt(id_vars=['날짜'], var_name='지역', value_name='매매증감')
+    r_melt = rent_chg.melt(id_vars=['날짜'], var_name='지역', value_name='전세증감')
+
+    df_chg = pd.merge(s_melt, r_melt, on=['날짜', '지역'])
+    df_chg['날짜'] = pd.to_datetime(df_chg['날짜'])
+    return df_chg
+
+file_path = "C:/Users/terra/Downloads/pythonweb/주간시계열 .xlsx"
+logo_image_path = "C:/Users/terra/Downloads/pythonweb/jak_logo.png"
 df = load_data(file_path)
+
+df_chg = load_change_data(file_path)
 
 # --- 사이드바 ---
 st.sidebar.header("🗓️ 필터")
@@ -68,7 +93,7 @@ with col1:
         st.write("🖼️ LOGO")
 
 with col2:
-    st.title("작부동산 매전지수 사분면")
+    st.title("작부동산 매전지수 4분면")
 
 # --- 데이터 필터링 ---
 mask = (df["날짜"] >= pd.to_datetime(start_date)) & \
@@ -79,7 +104,6 @@ df_sel = df[mask].sort_values(['지역', '날짜'])
 if df_sel.empty:
     st.warning("데이터가 없습니다.")
 else:
-    # 기본 라인 차트 생성
     fig = go.Figure()
 
     for region in selected_regions:
@@ -130,9 +154,9 @@ else:
             showlegend=False
         ))
 
-    # 레이아웃 설정
+    
     fig.update_layout(
-        title=f"JAK작부동산 매전지수 경로 분석 ({start_date} ~ {end_date})",
+        title=f"부동산 지수 경로 분석 ({start_date} ~ {end_date})",
         xaxis_title="매매지수", yaxis_title="전세지수",
         template="plotly_white",
         height=700,
@@ -140,27 +164,56 @@ else:
     )
 
     st.plotly_chart(fig, use_container_width=True)
+st.divider() 
 
+mask_chg = (df_chg["날짜"] >= pd.to_datetime(start_date)) & \
+           (df_chg["날짜"] <= pd.to_datetime(end_date)) & \
+           (df_chg["지역"].isin(selected_regions))
+df_chg_sel = df_chg[mask_chg].sort_values(['지역', '날짜'])
 
+if df_chg_sel.empty:
+    st.warning("증감 데이터가 없습니다.")
+else:
+    fig2 = go.Figure()
 
+    for region in selected_regions:
+        rdf = df_chg_sel[df_chg_sel['지역'] == region]
+        if rdf.empty: continue
+        
+        reg_color = color_map.get(region, "black")
 
+        # 경로 선
+        fig2.add_trace(go.Scatter(
+            x=rdf['매매증감'], y=rdf['전세증감'],
+            mode='lines+markers',
+            name=region,
+            line=dict(color=reg_color, width=2),
+            marker=dict(size=8, opacity=1),
+            hoverinfo='text',
+            text=[f"{region}<br>{d.strftime('%Y-%m-%d')}<br>매매증감:{s}%<br>전세증감:{r}%" 
+                  for d, s, r in zip(rdf['날짜'], rdf['매매증감'], rdf['전세증감'])]
+        ))
 
+        # 최신 지점 강조 (사각형 레이블)
+        last = rdf.iloc[-1]
+        fig2.add_annotation(
+            x=last['매매증감'], y=last['전세증감'],
+            text=f"<b>{region} (최근)</b>",
+            showarrow=False, yshift=15,
+            font=dict(color="white", size=11),
+            bgcolor=reg_color, borderpad=4
+        )
 
+    # 증감률 그래프 특화 레이아웃 (0점 기준 십자선 추가)
+    fig2.update_layout(
+        title=f"매매/전세 증감률 경로 ({start_date} ~ {end_date})",
+        xaxis_title="매매증감률 (%)", yaxis_title="전세증감률 (%)",
+        template="plotly_white",
+        height=700,
+        hovermode="closest"
+    )
+    
+    fig2.add_vline(x=0, line_width=1, line_dash="dash", line_color="gray")
+    fig2.add_hline(y=0, line_width=1, line_dash="dash", line_color="gray")
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    st.plotly_chart(fig2, use_container_width=True)
