@@ -210,11 +210,12 @@ else:
         showticklabels=True,   
         tickangle=45,          
         dtick="M1",            
-        tickformat="%y.%m.%d", 
+        tickformat="%y.%m", 
     )
 
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
+
 
 
