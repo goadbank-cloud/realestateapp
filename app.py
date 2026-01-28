@@ -93,7 +93,7 @@ with col1:
         st.write("🖼️ LOGO")
 
 with col2:
-    st.title("작부동산 매전지수 4분면")
+    st.title("작부동산 매전지수 사분면")
 
 # --- 데이터 필터링 ---
 mask = (df["날짜"] >= pd.to_datetime(start_date)) & \
@@ -156,7 +156,7 @@ else:
 
     
     fig.update_layout(
-        title=f"부동산 지수 경로 분석 ({start_date} ~ {end_date})",
+        title=f"jak 작부동산 지수 경로 분석 ({start_date} ~ {end_date})",
         xaxis_title="매매지수", yaxis_title="전세지수",
         template="plotly_white",
         height=700,
@@ -204,9 +204,18 @@ else:
             bgcolor=reg_color, borderpad=4
         )
 
+        first = rdf.iloc[0]
+        fig2.add_trace(go.Scatter(
+            x=[first['매매증감']], y=[first['전세증감']],
+            mode='markers+text',
+            text=["START"], textposition="bottom center",
+            marker=dict(color="grey", size=11, symbol="circle"),
+            showlegend=False
+        ))
+
     # 증감률 그래프 특화 레이아웃 (0점 기준 십자선 추가)
     fig2.update_layout(
-        title=f"매매/전세 증감률 경로 ({start_date} ~ {end_date})",
+        title=f"jak 작부동산 매매/전세 증감률 경로 ({start_date} ~ {end_date})",
         xaxis_title="매매증감률 (%)", yaxis_title="전세증감률 (%)",
         template="plotly_white",
         height=700,
@@ -217,5 +226,6 @@ else:
     fig2.add_hline(y=0, line_width=1, line_dash="dash", line_color="gray")
 
     st.plotly_chart(fig2, use_container_width=True)
+
 
 
