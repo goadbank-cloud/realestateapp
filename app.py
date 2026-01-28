@@ -5,8 +5,8 @@ import plotly.graph_objects as go
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
-    page_title="부동산 지수 4분면 분석",
-    page_icon="",
+    page_title="부동산 지수 사분면 분석",
+    page_icon="asdfasdfasf",
     layout="wide"
 )
 
@@ -32,7 +32,7 @@ def load_data(file_path):
     df = pd.merge(sale_melt, rent_melt, on=['날짜', '지역'])
     df['날짜'] = pd.to_datetime(df['날짜'])
     return df
-    
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 @st.cache_data
 def load_change_data(file_path):
     try:
@@ -55,12 +55,15 @@ def load_change_data(file_path):
     df_chg = pd.merge(s_melt, r_melt, on=['날짜', '지역'])
     df_chg['날짜'] = pd.to_datetime(df_chg['날짜'])
     return df_chg
+#+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-file_path = "주간시계열.xlsx"
-logo_image_path = "jak_logo.png"
+file_path = "C:/Users/terra/Downloads/pythonweb/주간시계열 .xlsx"
+logo_image_path = "C:/Users/terra/Downloads/pythonweb/jak_logo.png"
 df = load_data(file_path)
 
+# 데이터 로드 실행++++++++++++++++++++++++++++++++++++++++  
 df_chg = load_change_data(file_path)
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 # --- 사이드바 ---
 st.sidebar.header("🗓️ 필터")
@@ -83,7 +86,6 @@ st.sidebar.header("🎨 색상")
 color_map = {reg: st.sidebar.color_picker(f"{reg}", px.colors.qualitative.Plotly[i%10]) 
              for i, reg in enumerate(selected_regions)}
 
-# --- 메인 화면 ---
 col1, col2 = st.columns([1, 8]) 
 
 with col1:
@@ -95,7 +97,6 @@ with col1:
 with col2:
     st.title("작부동산 매전지수 사분면")
 
-# --- 데이터 필터링 ---
 mask = (df["날짜"] >= pd.to_datetime(start_date)) & \
        (df["날짜"] <= pd.to_datetime(end_date)) & \
        (df["지역"].isin(selected_regions))
@@ -112,7 +113,6 @@ else:
         
         reg_color = color_map.get(region, "black")
 
-        # 1. 경로 선 추가
         fig.add_trace(go.Scatter(
             x=rdf['매매지수'], y=rdf['전세지수'],
             mode='lines+markers',
@@ -124,7 +124,6 @@ else:
                   for d, s, r in zip(rdf['날짜'], rdf['매매지수'], rdf['전세지수'])]
         ))
         
-        # 3. 최신 지점(현재) 강조 레이블
         last = rdf.iloc[-1]
         fig.add_annotation(
             x=last['매매지수'], y=last['전세지수'],
@@ -134,7 +133,6 @@ else:
             bgcolor=reg_color, borderpad=4, opacity=1
         )
 
-        # 5. 종료 지점(가장 최근 날짜) 표시
         last = rdf.iloc[-1]
         fig.add_trace(go.Scatter(
             x=[last['매매지수']], y=[last['전세지수']],
@@ -154,7 +152,6 @@ else:
             showlegend=False
         ))
 
-    
     fig.update_layout(
         title=f"jak 작부동산 지수 경로 분석 ({start_date} ~ {end_date})",
         xaxis_title="매매지수", yaxis_title="전세지수",
@@ -164,12 +161,14 @@ else:
     )
 
     st.plotly_chart(fig, use_container_width=True)
-st.divider() 
 
+
+st.divider() 
 mask_chg = (df_chg["날짜"] >= pd.to_datetime(start_date)) & \
            (df_chg["날짜"] <= pd.to_datetime(end_date)) & \
            (df_chg["지역"].isin(selected_regions))
 df_chg_sel = df_chg[mask_chg].sort_values(['날짜', '지역'])
+
 
 if df_chg_sel.empty:
     st.warning("선택한 범위에 증감 데이터가 없습니다.")
@@ -181,40 +180,40 @@ else:
         value_name='증감률'
     )
 
+    df_bar['날짜_표시'] = df_bar['날짜'].dt.strftime('%Y-%m-%d')
+
     fig2 = px.bar(
         df_bar,
-        x='날짜',
+        x='날짜_표시',           
         y='증감률',
-        color='구분',           
-        barmode='group',      
-        facet_col='지역',      
-        facet_col_wrap=1,     
-        color_discrete_map={'매매증감': '#EF553B', '전세증감': '#636EFA'}, 
-        labels={'증감률': '증감률 (%)', '날짜': '조사 일자'},
-        hover_data={'지역': True, '날짜': '|%Y-%m-%d', '증감률': ':.2f'}
+        color='구분',
+        barmode='group',
+        facet_col='지역',
+        facet_col_wrap=1,
+        color_discrete_map={'매매증감': '#EF553B', '전세증감': '#636EFA'},
+        labels={'증감률': '증감률 (%)', '날짜_표시': ''},
+        hover_data={'지역': True, '날짜_표시': True, '증감률': ':.2f'}
     )
 
     fig2.update_layout(
-        title=f"jak 작부동산 매매/전세 증감률 경로 ({start_date} ~ {end_date})",
+        title=f"jak 작부동산 매매/전세 증감률 ({start_date} ~ {end_date})",
         height=400 * len(selected_regions),
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=80, b=40, l=40, r=40)
+        margin=dict(t=5, b=10, l=10, r=10),
+        hovermode="x unified" 
     )
 
     fig2.update_xaxes(
-        matches=None,          
-        showticklabels=True,   
-        tickangle=45,          
-        dtick="M1",            
-        tickformat="%y.%m", 
+        matches=None,
+        showticklabels=True,
+        tickangle=35,
+        type='category'
     )
 
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
-
-
 
 
 
