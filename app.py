@@ -56,8 +56,8 @@ def load_change_data(file_path):
     df_chg['날짜'] = pd.to_datetime(df_chg['날짜'])
     return df_chg
 
-file_path = "C:/Users/terra/Downloads/pythonweb/주간시계열 .xlsx"
-logo_image_path = "C:/Users/terra/Downloads/pythonweb/jak_logo.png"
+file_path = "주간시계열 .xlsx"
+logo_image_path = "jak_logo.png"
 df = load_data(file_path)
 
 df_chg = load_change_data(file_path)
@@ -217,3 +217,4 @@ else:
     fig2.add_hline(y=0, line_width=1, line_dash="dash", line_color="gray")
 
     st.plotly_chart(fig2, use_container_width=True)
+
