@@ -190,6 +190,7 @@ else:
         barmode='group',
         facet_col='지역',
         facet_col_wrap=1,
+        facet_row_spacing=0.15,
         color_discrete_map={'매매증감': '#EF553B', '전세증감': '#636EFA'},
         labels={'증감률': '증감률 (%)', '날짜_표시': ''},
         hover_data={'지역': True, '날짜_표시': True, '증감률': ':.2f'}
@@ -215,6 +216,7 @@ else:
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
