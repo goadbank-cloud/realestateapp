@@ -169,63 +169,38 @@ st.divider()
 mask_chg = (df_chg["날짜"] >= pd.to_datetime(start_date)) & \
            (df_chg["날짜"] <= pd.to_datetime(end_date)) & \
            (df_chg["지역"].isin(selected_regions))
-df_chg_sel = df_chg[mask_chg].sort_values(['지역', '날짜'])
+df_chg_sel = df_chg[mask_chg].sort_values(['날짜', '지역'])
 
 if df_chg_sel.empty:
-    st.warning("증감 데이터가 없습니다.")
+    st.warning("선택한 범위에 증감 데이터가 없습니다.")
 else:
-    fig2 = go.Figure()
-
-    for region in selected_regions:
-        rdf = df_chg_sel[df_chg_sel['지역'] == region]
-        if rdf.empty: continue
-        
-        reg_color = color_map.get(region, "black")
-
-        # 경로 선
-        fig2.add_trace(go.Scatter(
-            x=rdf['매매증감'], y=rdf['전세증감'],
-            mode='lines+markers',
-            name=region,
-            line=dict(color=reg_color, width=2),
-            marker=dict(size=8, opacity=1),
-            hoverinfo='text',
-            text=[f"{region}<br>{d.strftime('%Y-%m-%d')}<br>매매증감:{s}%<br>전세증감:{r}%" 
-                  for d, s, r in zip(rdf['날짜'], rdf['매매증감'], rdf['전세증감'])]
-        ))
-
-        # 최신 지점 강조 (사각형 레이블)
-        last = rdf.iloc[-1]
-        fig2.add_annotation(
-            x=last['매매증감'], y=last['전세증감'],
-            text=f"<b>{region} (최근)</b>",
-            showarrow=False, yshift=15,
-            font=dict(color="white", size=11),
-            bgcolor=reg_color, borderpad=4
-        )
-
-        first = rdf.iloc[0]
-        fig2.add_trace(go.Scatter(
-            x=[first['매매증감']], y=[first['전세증감']],
-            mode='markers+text',
-            text=["START"], textposition="bottom center",
-            marker=dict(color="grey", size=11, symbol="circle"),
-            showlegend=False
-        ))
-
-    # 증감률 그래프 특화 레이아웃 (0점 기준 십자선 추가)
-    fig2.update_layout(
-        title=f"jak 작부동산 매매/전세 증감률 경로 ({start_date} ~ {end_date})",
-        xaxis_title="매매증감률 (%)", yaxis_title="전세증감률 (%)",
-        template="plotly_white",
-        height=700,
-        hovermode="closest"
+    df_bar = df_chg_sel.melt(
+        id_vars=['날짜', '지역'], 
+        value_vars=['매매증감', '전세증감'],
+        var_name='구분', 
+        value_name='증감률'
     )
-    
-    fig2.add_vline(x=0, line_width=1, line_dash="dash", line_color="gray")
-    fig2.add_hline(y=0, line_width=1, line_dash="dash", line_color="gray")
+
+    fig2 = px.bar(
+        df_bar,
+        x='날짜',
+        y='증감률',
+        color='구분',           
+        barmode='group',      
+        facet_col='지역',      
+        facet_col_wrap=1,     
+        color_discrete_map={'매매증감': '#EF553B', '전세증감': '#636EFA'}, 
+        labels={'증감률': '증감률 (%)', '날짜': '조사 일자'},
+        hover_data={'지역': True, '날짜': '|%Y-%m-%d', '증감률': ':.2f'}
+    )
+
+    fig2.update_layout(
+        height=400 * len(selected_regions), 
+        template="plotly_white",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(t=80, b=40, l=40, r=40)
+    )
+
+    fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
-
-
-
