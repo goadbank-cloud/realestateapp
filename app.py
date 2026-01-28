@@ -195,6 +195,7 @@ else:
     )
 
     fig2.update_layout(
+        title=f"jak 작부동산 매매/전세 증감률 경로 ({start_date} ~ {end_date})",
         height=400 * len(selected_regions),
         template="plotly_white",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
@@ -216,6 +217,7 @@ else:
     fig2.add_hline(y=0, line_width=1, line_color="black")
 
     st.plotly_chart(fig2, use_container_width=True)
+
 
 
 
