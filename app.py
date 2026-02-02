@@ -182,45 +182,39 @@ else:
 
     df_bar['날짜_표시'] = df_bar['날짜'].dt.strftime('%Y-%m-%d')
 
-    num_regions = len(selected_regions)
-    
-    dynamic_spacing = 0.05 if num_regions >= 8 else 0.1 
-    
-    row_height = 350 if num_regions >= 8 else 400
+    st.write(f"######  jak 작부동산 지역별 매매/전세 증감률 ({start_date} ~ {end_date})")
 
-    fig2 = px.bar(
-        df_bar,
-        x='날짜_표시',           
-        y='증감률',
-        color='구분',
-        barmode='group',
-        facet_col='지역',
-        facet_col_wrap=1,
-        facet_row_spacing=dynamic_spacing,
-        color_discrete_map={'매매증감': '#EF553B', '전세증감': '#636EFA'},
-        labels={'증감률': '증감률 (%)', '날짜_표시': ''},
-        hover_data={'지역': True, '날짜_표시': True, '증감률': ':.2f'}
-    )
+    for region in selected_regions:
+        region_df = df_bar[df_bar['지역'] == region]
+        
+        if region_df.empty:
+            continue
+            
+        fig_each = px.bar(
+            region_df,
+            x='날짜_표시',
+            y='증감률',
+            color='구분',
+            barmode='group',
+            title=f"{region}", 
+            color_discrete_map={'매매증감': '#EF553B', '전세증감': '#636EFA'},
+            labels={'증감률': '증감률 (%)', '날짜_표시': ''},
+            height=350, 
+            template="plotly_white"
+        )
 
-    fig2.update_layout(
-        title=f"jak 작부동산 매매/전세 증감률 ({start_date} ~ {end_date})",
-        height=row_height * num_regions,
-        template="plotly_white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(t=5, b=10, l=10, r=10),
-        hovermode="x unified",
-    )
+        fig_each.update_layout(
+            margin=dict(t=40, b=10, l=10, r=10),
+            showlegend=(region == selected_regions[0]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode="x unified"
+        )
 
-    fig2.update_xaxes(
-        matches=None,
-        showticklabels=True,
-        tickangle=35,
-        type='category'
-    )
+        fig_each.update_xaxes(type='category', tickangle=35)
+        fig_each.add_hline(y=0, line_width=1, line_color="black")
 
-    fig2.add_hline(y=0, line_width=1, line_color="black")
+        st.plotly_chart(fig_each, use_container_width=True)
 
-    st.plotly_chart(fig2, use_container_width=True)
 
 
 
