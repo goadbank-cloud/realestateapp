@@ -57,7 +57,7 @@ def load_change_data(file_path):
     return df_chg
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-file_path = "주간시계열.xlsx"
+file_path = "temp_1772156881907.1645211392.xlsx"
 logo_image_path = "jak_logo.png"
 df = load_data(file_path)
 
@@ -214,6 +214,7 @@ else:
         fig_each.add_hline(y=0, line_width=1, line_color="black")
 
         st.plotly_chart(fig_each, use_container_width=True)
+
 
 
 
