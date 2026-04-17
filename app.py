@@ -13,38 +13,51 @@ st.set_page_config(
 @st.cache_data
 def load_data(file_path):
     try:
+        # 엑셀 로드
         sale = pd.read_excel(file_path, sheet_name="3.매매지수", skiprows=[0, 2, 3])
         rent = pd.read_excel(file_path, sheet_name="4.전세지수", skiprows=[0, 2, 3])
     except Exception as e:
         st.error(f"오류 발생: {e}")
         st.stop()
 
+    # '구분' 열(날짜)이 비어있는 행 제거
     sale = sale.dropna(subset=['구분'])
-    sale[:] = sale[:].fillna(0).infer_objects(copy=False)
-    rent[:] = rent[:].fillna(0).infer_objects(copy=False)
+    rent = rent.dropna(subset=['구분'])
 
+    # 날짜를 제외한 나머지 수치 데이터의 결측치만 0으로 채움
+    sale.iloc[:, 1:] = sale.iloc[:, 1:].fillna(0)
+    rent.iloc[:, 1:] = rent.iloc[:, 1:].fillna(0)
+
+    # 이름 변경
     sale.rename(columns={'구분': '날짜'}, inplace=True)
     rent.rename(columns={'구분': '날짜'}, inplace=True)
 
+    # Wide to Long 변환
     sale_melt = sale.melt(id_vars=['날짜'], var_name='지역', value_name='매매지수')
     rent_melt = rent.melt(id_vars=['날짜'], var_name='지역', value_name='전세지수')
 
+    # 병합 및 날짜 형식 강제 변환 (에러 방지용 errors='coerce')
     df = pd.merge(sale_melt, rent_melt, on=['날짜', '지역'])
-    df['날짜'] = pd.to_datetime(df['날짜'])
+    df['날짜'] = pd.to_datetime(df['날짜'], errors='coerce')
+    df = df.dropna(subset=['날짜']) # 변환 실패한 행 제거
+    
     return df
 #++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 @st.cache_data
 def load_change_data(file_path):
     try:
-        # 증감 시트는 보통 '매매증감', '전세증감'으로 명명됨 (시트명 확인 필요)
         sale_chg = pd.read_excel(file_path, sheet_name="1.매매증감", skiprows=[0, 2, 3])
         rent_chg = pd.read_excel(file_path, sheet_name="2.전세증감", skiprows=[0, 2, 3])
     except Exception as e:
         st.error(f"증감 데이터 로드 오류: {e}")
         return None
 
-    sale_chg = sale_chg.dropna(subset=['구분']).fillna(0).infer_objects(copy=False)
-    rent_chg = rent_chg.dropna(subset=['구분']).fillna(0).infer_objects(copy=False)
+    sale_chg = sale_chg.dropna(subset=['구분'])
+    rent_chg = rent_chg.dropna(subset=['구분'])
+
+    # 수치 데이터만 0으로 채우기
+    sale_chg.iloc[:, 1:] = sale_chg.iloc[:, 1:].fillna(0)
+    rent_chg.iloc[:, 1:] = rent_chg.iloc[:, 1:].fillna(0)
 
     sale_chg.rename(columns={'구분': '날짜'}, inplace=True)
     rent_chg.rename(columns={'구분': '날짜'}, inplace=True)
@@ -53,7 +66,9 @@ def load_change_data(file_path):
     r_melt = rent_chg.melt(id_vars=['날짜'], var_name='지역', value_name='전세증감')
 
     df_chg = pd.merge(s_melt, r_melt, on=['날짜', '지역'])
-    df_chg['날짜'] = pd.to_datetime(df_chg['날짜'])
+    df_chg['날짜'] = pd.to_datetime(df_chg['날짜'], errors='coerce')
+    df_chg = df_chg.dropna(subset=['날짜'])
+    
     return df_chg
 #+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
