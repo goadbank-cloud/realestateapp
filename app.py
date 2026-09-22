@@ -178,6 +178,202 @@ else:
     st.plotly_chart(fig, use_container_width=True)
 
 
+# ================================================================
+# 매매/전세 증감률 가속도 사분면 분석
+#   X축 : 해당 주의 증감률
+#   Y축 : 가속도 = 해당 주 증감률 - 직전 주 증감률
+#   1사분면 : 상승가속
+#   2사분면 : 하락반등
+#   3사분면 : 하락가속
+#   4사분면 : 상승둔화
+# ================================================================
+
+def make_acceleration_data(df_index, value_col, accel_col):
+    """
+    지수 Raw Data(3.매매지수/4.전세지수)에서
+    주간 증감률과 가속도(증감률의 전주 대비 변화)를 계산한다.
+
+    주간 변동 = 현주 지수 - 전주 지수
+    가속도 = 현주 변동 - 전주 변동
+    """
+    data = df_index.copy().sort_values(['지역', '날짜']).copy()
+
+    prev_index = data.groupby('지역')[value_col].shift(1)
+    prev_change = (data[value_col] - prev_index)
+
+    data['증감률계산'] = prev_change
+    data[accel_col] = prev_change - prev_change.groupby(data['지역']).shift(1)
+
+    # 첫 주는 전주 지수가 없고, 두 번째 주는 가속도 계산에 전전주가 없으므로 제외
+    data = data.dropna(subset=['증감률계산', accel_col]).copy()
+    data[value_col + '_변동'] = data['증감률계산']
+    return data
+
+
+def add_quadrant_columns(data, value_col, accel_col):
+    data = data.copy()
+
+    def classify(row):
+        x = row[value_col]
+        y = row[accel_col]
+
+        if x >= 0 and y >= 0:
+            return '상승가속'
+        elif x < 0 and y >= 0:
+            return '하락반등'
+        elif x < 0 and y < 0:
+            return '하락가속'
+        else:
+            return '상승둔화'
+
+    data['사분면'] = data.apply(classify, axis=1)
+    return data
+
+
+def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_map):
+    # 현재 선택된 기간/지역만 사용
+    data = data[
+        (data['날짜'] >= pd.to_datetime(start_date)) &
+        (data['날짜'] <= pd.to_datetime(end_date)) &
+        (data['지역'].isin(selected_regions))
+    ].copy()
+
+    if data.empty:
+        st.info(f'{title} 데이터가 없습니다.')
+        return
+
+    # 가속도 사분면 분류용 X축은 주간 지수 변동(=현주 지수-전주 지수)
+    x_col = '증감률계산'
+    data = add_quadrant_columns(data, x_col, accel_col)
+
+    quadrant_colors = {
+        '상승가속': '#EF553B',
+        '상승둔화': '#FFA15A',
+        '하락반등': '#00CC96',
+        '하락가속': '#636EFA'
+    }
+
+    fig_acc = go.Figure()
+
+    # 사분면별 점
+    for quadrant in ['상승가속', '상승둔화', '하락반등', '하락가속']:
+        qdf = data[data['사분면'] == quadrant]
+        if qdf.empty:
+            continue
+
+        fig_acc.add_trace(go.Scatter(
+            x=qdf[x_col],
+            y=qdf[accel_col],
+            mode='markers',
+            name=quadrant,
+            marker=dict(color=quadrant_colors[quadrant], size=7, opacity=0.78),
+            customdata=qdf[['지역', '날짜', x_col, accel_col]].to_numpy(),
+            hovertemplate=(
+                '<b>%{customdata[0]}</b><br>'
+                '날짜: %{customdata[1]}<br>'
+                '증감률: %{customdata[2]:.4f}<br>'
+                '가속도: %{customdata[3]:.4f}<extra></extra>'
+            )
+        ))
+
+    # X=0 / Y=0 기준선
+    fig_acc.add_hline(y=0, line_width=1, line_color='#999999')
+    fig_acc.add_vline(x=0, line_width=1, line_color='#999999')
+
+    x_min, x_max = data[x_col].min(), data[x_col].max()
+    y_min, y_max = data[accel_col].min(), data[accel_col].max()
+    x_abs = max(abs(x_min), abs(x_max), 0.0001) * 1.18
+    y_abs = max(abs(y_min), abs(y_max), 0.0001) * 1.18
+
+    # 사분면 배경
+    rects = [
+        (0, x_abs, 0, y_abs, 'rgba(239,85,59,0.10)'),
+        (-x_abs, 0, 0, y_abs, 'rgba(0,204,150,0.10)'),
+        (-x_abs, 0, -y_abs, 0, 'rgba(99,110,250,0.10)'),
+        (0, x_abs, -y_abs, 0, 'rgba(255,161,90,0.10)')
+    ]
+    for x0, x1, y0, y1, fill in rects:
+        fig_acc.add_shape(type='rect', x0=x0, x1=x1, y0=y0, y1=y1,
+                          fillcolor=fill, line_width=0, layer='below')
+
+    # 사분면 명칭
+    fig_acc.add_annotation(x=x_abs * 0.68, y=y_abs * 0.87, text='<b>상승가속</b>', showarrow=False)
+    fig_acc.add_annotation(x=-x_abs * 0.68, y=y_abs * 0.87, text='<b>하락반등</b>', showarrow=False)
+    fig_acc.add_annotation(x=-x_abs * 0.68, y=-y_abs * 0.87, text='<b>하락가속</b>', showarrow=False)
+    fig_acc.add_annotation(x=x_abs * 0.68, y=-y_abs * 0.87, text='<b>상승둔화</b>', showarrow=False)
+
+    # ★ 지역명은 각 지역의 끝점(선택 기간의 최근 데이터)에만 표시
+    endpoint = (
+        data.sort_values('날짜')
+             .groupby('지역', as_index=False)
+             .tail(1)
+    )
+    if not endpoint.empty:
+        fig_acc.add_trace(go.Scatter(
+            x=endpoint[x_col],
+            y=endpoint[accel_col],
+            mode='markers+text',
+            text=endpoint['지역'],
+            textposition='top center',
+            textfont=dict(size=10),
+            marker=dict(
+                size=10,
+                color=[region_color_map.get(r, "#333333") for r in endpoint['지역']]
+            ),
+            customdata=endpoint[['지역', '날짜', x_col, accel_col]].to_numpy(),
+            hovertemplate=(
+                '<b>%{customdata[0]}</b><br>'
+                '최근 날짜: %{customdata[1]}<br>'
+                '증감률: %{customdata[2]:.4f}<br>'
+                '가속도: %{customdata[3]:.4f}<extra></extra>'
+            ),
+            showlegend=False
+        ))
+
+    fig_acc.update_layout(
+        title=title,
+        xaxis_title='주간 증감률 (지수)',
+        yaxis_title='가속도 (증감률 변화)',
+        xaxis=dict(range=[-x_abs, x_abs], zeroline=False),
+        yaxis=dict(range=[-y_abs, y_abs], zeroline=False),
+        template='plotly_white',
+        height=430,
+        margin=dict(t=55, b=45, l=50, r=20),
+        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
+        hovermode='closest'
+    )
+
+    st.plotly_chart(fig_acc, use_container_width=True)
+
+
+# 가속도 데이터 계산
+df_sale_acc = make_acceleration_data(df, '매매지수', '매매가속도')
+df_rent_acc = make_acceleration_data(df, '전세지수', '전세가속도')
+
+# 두 그래프를 나란히 배치
+acc_col1, acc_col2 = st.columns(2)
+
+with acc_col1:
+    draw_acceleration_quadrant(
+        df_sale_acc,
+        '매매증감',
+        '매매가속도',
+        f'매매증감 가속도 사분면 ({start_date} ~ {end_date})',
+        color_map
+    )
+
+with acc_col2:
+    draw_acceleration_quadrant(
+        df_rent_acc,
+        '전세증감',
+        '전세가속도',
+        f'전세증감 가속도 사분면 ({start_date} ~ {end_date})',
+        color_map
+    )
+
+# =======가속도 추가부분 끝========
+
+
 st.divider() 
 mask_chg = (df_chg["날짜"] >= pd.to_datetime(start_date)) & \
            (df_chg["날짜"] <= pd.to_datetime(end_date)) & \
