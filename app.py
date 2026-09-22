@@ -177,6 +177,7 @@ else:
 
     st.plotly_chart(fig, use_container_width=True)
 
+# ======가속도 추가부분 시작=======
 
 # ================================================================
 # 매매/전세 증감률 가속도 사분면 분석
@@ -255,6 +256,26 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
 
     fig_acc = go.Figure()
 
+    # 지역별 시간 흐름을 선으로 연결
+    # - 각 점은 주별 가속도 위치를 의미
+    # - 선은 START → 최근까지의 이동 경로를 나타냄
+    for region in selected_regions:
+        rdf = data[data['지역'] == region].sort_values('날짜')
+        if rdf.empty:
+            continue
+
+        reg_color = region_color_map.get(region, '#333333')
+        fig_acc.add_trace(go.Scatter(
+            x=rdf[x_col],
+            y=rdf[accel_col],
+            mode='lines',
+            name=f'{region} 경로',
+            line=dict(color=reg_color, width=1.8),
+            opacity=0.75,
+            hoverinfo='skip',
+            showlegend=False
+        ))
+
     # 사분면별 점
     for quadrant in ['상승가속', '상승둔화', '하락반등', '하락가속']:
         qdf = data[data['사분면'] == quadrant]
@@ -301,6 +322,35 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
     fig_acc.add_annotation(x=-x_abs * 0.68, y=y_abs * 0.87, text='<b>하락반등</b>', showarrow=False)
     fig_acc.add_annotation(x=-x_abs * 0.68, y=-y_abs * 0.87, text='<b>하락가속</b>', showarrow=False)
     fig_acc.add_annotation(x=x_abs * 0.68, y=-y_abs * 0.87, text='<b>상승둔화</b>', showarrow=False)
+
+    # ★ 각 지역의 시작점에는 START 표시
+    startpoint = (
+        data.sort_values('날짜')
+             .groupby('지역', as_index=False)
+             .head(1)
+    )
+    if not startpoint.empty:
+        fig_acc.add_trace(go.Scatter(
+            x=startpoint[x_col],
+            y=startpoint[accel_col],
+            mode='markers+text',
+            text=['START'] * len(startpoint),
+            textposition='bottom center',
+            textfont=dict(size=9, color='#555555'),
+            marker=dict(
+                size=8,
+                color='grey',
+                symbol='circle'
+            ),
+            customdata=startpoint[['지역', '날짜', x_col, accel_col]].to_numpy(),
+            hovertemplate=(
+                '<b>%{customdata[0]}</b><br>'
+                '시작 날짜: %{customdata[1]}<br>'
+                '증감률: %{customdata[2]:.4f}<br>'
+                '가속도: %{customdata[3]:.4f}<extra></extra>'
+            ),
+            showlegend=False
+        ))
 
     # ★ 지역명은 각 지역의 끝점(선택 기간의 최근 데이터)에만 표시
     endpoint = (
@@ -370,6 +420,7 @@ with acc_col2:
         f'전세증감 가속도 사분면 ({start_date} ~ {end_date})',
         color_map
     )
+
 
 # =======가속도 추가부분 끝========
 
