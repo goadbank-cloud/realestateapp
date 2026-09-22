@@ -232,7 +232,7 @@ def add_quadrant_columns(data, value_col, accel_col):
 
 
 def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_map):
-    # 현재 선택된 기간/지역만 사용
+    """가속도 사분면을 그리고 Plotly 애니메이션으로 시간 흐름을 재생한다."""
     data = data[
         (data['날짜'] >= pd.to_datetime(start_date)) &
         (data['날짜'] <= pd.to_datetime(end_date)) &
@@ -243,9 +243,9 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         st.info(f'{title} 데이터가 없습니다.')
         return
 
-    # 가속도 사분면 분류용 X축은 주간 지수 변동(=현주 지수-전주 지수)
     x_col = '증감률계산'
     data = add_quadrant_columns(data, x_col, accel_col)
+    data = data.sort_values(['날짜', '지역'])
 
     quadrant_colors = {
         '상승가속': '#EF553B',
@@ -254,59 +254,101 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         '하락가속': '#636EFA'
     }
 
-    fig_acc = go.Figure()
-
-    # 지역별 시간 흐름을 선으로 연결
-    # - 각 점은 주별 가속도 위치를 의미
-    # - 선은 START → 최근까지의 이동 경로를 나타냄
-    for region in selected_regions:
-        rdf = data[data['지역'] == region].sort_values('날짜')
-        if rdf.empty:
-            continue
-
-        reg_color = region_color_map.get(region, '#333333')
-        fig_acc.add_trace(go.Scatter(
-            x=rdf[x_col],
-            y=rdf[accel_col],
-            mode='lines',
-            name=f'{region} 경로',
-            line=dict(color=reg_color, width=1.8),
-            opacity=0.75,
-            hoverinfo='skip',
-            showlegend=False
-        ))
-
-    # 사분면별 점
-    for quadrant in ['상승가속', '상승둔화', '하락반등', '하락가속']:
-        qdf = data[data['사분면'] == quadrant]
-        if qdf.empty:
-            continue
-
-        fig_acc.add_trace(go.Scatter(
-            x=qdf[x_col],
-            y=qdf[accel_col],
-            mode='markers',
-            name=quadrant,
-            marker=dict(color=quadrant_colors[quadrant], size=7, opacity=0.78),
-            customdata=qdf[['지역', '날짜', x_col, accel_col]].to_numpy(),
-            hovertemplate=(
-                '<b>%{customdata[0]}</b><br>'
-                '날짜: %{customdata[1]}<br>'
-                '증감률: %{customdata[2]:.4f}<br>'
-                '가속도: %{customdata[3]:.4f}<extra></extra>'
-            )
-        ))
-
-    # X=0 / Y=0 기준선
-    fig_acc.add_hline(y=0, line_width=1, line_color='#999999')
-    fig_acc.add_vline(x=0, line_width=1, line_color='#999999')
-
+    # 전체 축 범위는 애니메이션 중에도 고정한다.
     x_min, x_max = data[x_col].min(), data[x_col].max()
     y_min, y_max = data[accel_col].min(), data[accel_col].max()
     x_abs = max(abs(x_min), abs(x_max), 0.0001) * 1.18
     y_abs = max(abs(y_min), abs(y_max), 0.0001) * 1.18
 
+    dates = sorted(data['날짜'].dropna().unique())
+
+    # 지역별 데이터 준비
+    region_data = {}
+    for region in selected_regions:
+        rdf = data[data['지역'] == region].sort_values('날짜').copy()
+        if not rdf.empty:
+            region_data[region] = rdf
+
+    if not region_data:
+        st.info(f'{title} 데이터가 없습니다.')
+        return
+
+    fig_acc = go.Figure()
+
+    # ------------------------------------------------------------------
+    # 기본 프레임: 시작일의 상태
+    # 각 지역당
+    #   1) 경로 + 점 (지역 범례 담당)
+    #   2) START
+    #   3) 현재 끝점 + 지역명
+    # 의 3개 trace를 만든다.
+    # ------------------------------------------------------------------
+    for region in selected_regions:
+        rdf = region_data.get(region)
+        if rdf is None:
+            continue
+
+        reg_color = region_color_map.get(region, '#333333')
+        initial = rdf[rdf['날짜'] <= dates[0]].copy()
+        if initial.empty:
+            initial = rdf.iloc[[0]].copy()
+
+        marker_colors = [quadrant_colors[q] for q in initial['사분면']]
+
+        # 지역 경로 + 점: 지역 범례에서 이 trace를 켜고 끄면
+        # 같은 legendgroup의 START/끝점도 함께 표시/숨김된다.
+        fig_acc.add_trace(go.Scatter(
+            x=initial[x_col],
+            y=initial[accel_col],
+            mode='lines+markers',
+            name=region,
+            legendgroup=region,
+            line=dict(color=reg_color, width=2),
+            marker=dict(color=marker_colors, size=6, opacity=0.82),
+            customdata=initial[['지역', '날짜', x_col, accel_col]].to_numpy(),
+            hovertemplate=(
+                '<b>%{customdata[0]}</b><br>'
+                '날짜: %{customdata[1]}<br>'
+                '증감률: %{customdata[2]:.4f}<br>'
+                '가속도: %{customdata[3]:.4f}<extra></extra>'
+            ),
+            showlegend=True
+        ))
+
+        first = rdf.iloc[0]
+        fig_acc.add_trace(go.Scatter(
+            x=[first[x_col]],
+            y=[first[accel_col]],
+            mode='text',
+            text=['START'],
+            textposition='bottom center',
+            textfont=dict(size=9, color='#555555'),
+            legendgroup=region,
+            showlegend=False,
+            hoverinfo='skip'
+        ))
+
+        last = initial.iloc[-1]
+        fig_acc.add_trace(go.Scatter(
+            x=[last[x_col]],
+            y=[last[accel_col]],
+            mode='markers+text',
+            text=[region],
+            textposition='top center',
+            textfont=dict(size=10),
+            marker=dict(color=reg_color, size=10),
+            legendgroup=region,
+            showlegend=False,
+            hovertemplate=(
+                f'<b>{region}</b><br>'
+                '날짜: %{x}<br>'
+                '증감률: %{y:.4f}<extra></extra>'
+            )
+        ))
+
+    # ------------------------------------------------------------------
     # 사분면 배경
+    # ------------------------------------------------------------------
     rects = [
         (0, x_abs, 0, y_abs, 'rgba(239,85,59,0.10)'),
         (-x_abs, 0, 0, y_abs, 'rgba(0,204,150,0.10)'),
@@ -314,70 +356,99 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         (0, x_abs, -y_abs, 0, 'rgba(255,161,90,0.10)')
     ]
     for x0, x1, y0, y1, fill in rects:
-        fig_acc.add_shape(type='rect', x0=x0, x1=x1, y0=y0, y1=y1,
-                          fillcolor=fill, line_width=0, layer='below')
+        fig_acc.add_shape(
+            type='rect', x0=x0, x1=x1, y0=y0, y1=y1,
+            fillcolor=fill, line_width=0, layer='below'
+        )
+
+    fig_acc.add_hline(y=0, line_width=1, line_color='#999999')
+    fig_acc.add_vline(x=0, line_width=1, line_color='#999999')
 
     # 사분면 명칭
-    fig_acc.add_annotation(x=x_abs * 0.68, y=y_abs * 0.87, text='<b>상승가속</b>', showarrow=False)
-    fig_acc.add_annotation(x=-x_abs * 0.68, y=y_abs * 0.87, text='<b>하락반등</b>', showarrow=False)
-    fig_acc.add_annotation(x=-x_abs * 0.68, y=-y_abs * 0.87, text='<b>하락가속</b>', showarrow=False)
-    fig_acc.add_annotation(x=x_abs * 0.68, y=-y_abs * 0.87, text='<b>상승둔화</b>', showarrow=False)
+    fig_acc.add_annotation(x=x_abs * 0.68, y=y_abs * 0.87,
+                           text='<b>상승가속</b>', showarrow=False)
+    fig_acc.add_annotation(x=-x_abs * 0.68, y=y_abs * 0.87,
+                           text='<b>하락반등</b>', showarrow=False)
+    fig_acc.add_annotation(x=-x_abs * 0.68, y=-y_abs * 0.87,
+                           text='<b>하락가속</b>', showarrow=False)
+    fig_acc.add_annotation(x=x_abs * 0.68, y=-y_abs * 0.87,
+                           text='<b>상승둔화</b>', showarrow=False)
 
-    # ★ 각 지역의 시작점에는 START 표시
-    startpoint = (
-        data.sort_values('날짜')
-             .groupby('지역', as_index=False)
-             .head(1)
-    )
-    if not startpoint.empty:
-        fig_acc.add_trace(go.Scatter(
-            x=startpoint[x_col],
-            y=startpoint[accel_col],
-            mode='markers+text',
-            text=['START'] * len(startpoint),
-            textposition='bottom center',
-            textfont=dict(size=9, color='#555555'),
-            marker=dict(
-                size=8,
-                color='grey',
-                symbol='circle'
-            ),
-            customdata=startpoint[['지역', '날짜', x_col, accel_col]].to_numpy(),
-            hovertemplate=(
-                '<b>%{customdata[0]}</b><br>'
-                '시작 날짜: %{customdata[1]}<br>'
-                '증감률: %{customdata[2]:.4f}<br>'
-                '가속도: %{customdata[3]:.4f}<extra></extra>'
-            ),
-            showlegend=False
+    # ------------------------------------------------------------------
+    # 애니메이션 프레임
+    # 날짜별로 START는 고정하고, 경로와 현재 끝점을 해당 날짜까지 이동시킨다.
+    # ------------------------------------------------------------------
+    frames = []
+    for frame_date in dates:
+        frame_traces = []
+
+        for region in selected_regions:
+            rdf = region_data.get(region)
+            if rdf is None:
+                continue
+
+            visible = rdf[rdf['날짜'] <= frame_date].copy()
+            if visible.empty:
+                visible = rdf.iloc[[0]].copy()
+
+            marker_colors = [quadrant_colors[q] for q in visible['사분면']]
+            reg_color = region_color_map.get(region, '#333333')
+
+            # 1. 현재까지의 경로
+            frame_traces.append(go.Scatter(
+                x=visible[x_col].tolist(),
+                y=visible[accel_col].tolist(),
+                marker=dict(color=marker_colors),
+                customdata=visible[['지역', '날짜', x_col, accel_col]].to_numpy()
+            ))
+
+            # 2. START는 고정
+            first = rdf.iloc[0]
+            frame_traces.append(go.Scatter(
+                x=[first[x_col]], y=[first[accel_col]],
+                text=['START']
+            ))
+
+            # 3. 현재 끝점 + 지역명
+            last = visible.iloc[-1]
+            frame_traces.append(go.Scatter(
+                x=[last[x_col]], y=[last[accel_col]],
+                text=[region],
+                marker=dict(color=reg_color)
+            ))
+
+        frames.append(go.Frame(
+            name=pd.Timestamp(frame_date).strftime('%Y-%m-%d'),
+            data=frame_traces
         ))
 
-    # ★ 지역명은 각 지역의 끝점(선택 기간의 최근 데이터)에만 표시
-    endpoint = (
-        data.sort_values('날짜')
-             .groupby('지역', as_index=False)
-             .tail(1)
-    )
-    if not endpoint.empty:
-        fig_acc.add_trace(go.Scatter(
-            x=endpoint[x_col],
-            y=endpoint[accel_col],
-            mode='markers+text',
-            text=endpoint['지역'],
-            textposition='top center',
-            textfont=dict(size=10),
-            marker=dict(
-                size=10,
-                color=[region_color_map.get(r, "#333333") for r in endpoint['지역']]
-            ),
-            customdata=endpoint[['지역', '날짜', x_col, accel_col]].to_numpy(),
-            hovertemplate=(
-                '<b>%{customdata[0]}</b><br>'
-                '최근 날짜: %{customdata[1]}<br>'
-                '증감률: %{customdata[2]:.4f}<br>'
-                '가속도: %{customdata[3]:.4f}<extra></extra>'
-            ),
-            showlegend=False
+    fig_acc.frames = frames
+
+    # 첫 프레임으로 초기 상태 설정
+    if frames:
+        initial_frame = frames[0]
+        for trace, frame_trace in zip(fig_acc.data, initial_frame.data):
+            if hasattr(frame_trace, 'x') and frame_trace.x is not None:
+                trace.x = frame_trace.x
+            if hasattr(frame_trace, 'y') and frame_trace.y is not None:
+                trace.y = frame_trace.y
+            if hasattr(frame_trace, 'text') and frame_trace.text is not None:
+                trace.text = frame_trace.text
+            if getattr(frame_trace, 'marker', None) is not None:
+                trace.marker.color = frame_trace.marker.color
+
+    # 날짜 슬라이더 + ▶ 플레이 버튼
+    slider_steps = []
+    for d in dates:
+        date_str = pd.Timestamp(d).strftime('%Y-%m-%d')
+        slider_steps.append(dict(
+            label=date_str,
+            method='animate',
+            args=[[date_str], {
+                'mode': 'immediate',
+                'frame': {'duration': 120, 'redraw': True},
+                'transition': {'duration': 0}
+            }]
         ))
 
     fig_acc.update_layout(
@@ -387,13 +458,56 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         xaxis=dict(range=[-x_abs, x_abs], zeroline=False),
         yaxis=dict(range=[-y_abs, y_abs], zeroline=False),
         template='plotly_white',
-        height=430,
-        margin=dict(t=55, b=45, l=50, r=20),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-        hovermode='closest'
+        height=500,
+        margin=dict(t=70, b=80, l=50, r=20),
+        hovermode='closest',
+        legend=dict(
+            orientation='h',
+            yanchor='bottom', y=1.02,
+            xanchor='left', x=0,
+            title='지역',
+            groupclick='togglegroup'
+        ),
+        updatemenus=[dict(
+            type='buttons',
+            direction='left',
+            x=0, y=-0.14,
+            xanchor='left', yanchor='top',
+            showactive=False,
+            buttons=[
+                dict(
+                    label='▶ 재생',
+                    method='animate',
+                    args=[None, {
+                        'frame': {'duration': 180, 'redraw': True},
+                        'transition': {'duration': 0},
+                        'fromcurrent': True,
+                        'mode': 'immediate'
+                    }]
+                ),
+                dict(
+                    label='⏸ 일시정지',
+                    method='animate',
+                    args=[[None], {
+                        'frame': {'duration': 0, 'redraw': False},
+                        'transition': {'duration': 0},
+                        'mode': 'immediate'
+                    }]
+                )
+            ]
+        )],
+        sliders=[dict(
+            active=0,
+            x=0.15, y=-0.14,
+            xanchor='left', yanchor='top',
+            len=0.83,
+            currentvalue=dict(prefix='날짜: '),
+            transition=dict(duration=0),
+            steps=slider_steps
+        )]
     )
 
-    st.plotly_chart(fig_acc, use_container_width=True)
+    st.plotly_chart(fig_acc, use_container_width=True, key=f'acc_{value_col}')
 
 
 # 가속도 데이터 계산
