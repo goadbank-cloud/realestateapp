@@ -452,26 +452,34 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         ))
 
     fig_acc.update_layout(
-        title=title,
+        title=dict(
+            text=title,
+            x=0.5,
+            xanchor='center',
+            y=0.985,
+            yanchor='top'
+        ),
         xaxis_title='주간 증감률 (지수)',
         yaxis_title='가속도 (증감률 변화)',
         xaxis=dict(range=[-x_abs, x_abs], zeroline=False),
         yaxis=dict(range=[-y_abs, y_abs], zeroline=False),
         template='plotly_white',
-        height=500,
-        margin=dict(t=70, b=80, l=50, r=20),
+        height=540,
+        margin=dict(t=245, b=145, l=55, r=25),
         hovermode='closest',
         legend=dict(
             orientation='h',
-            yanchor='bottom', y=1.02,
+            yanchor='bottom', y=1.015,
             xanchor='left', x=0,
             title='지역',
-            groupclick='togglegroup'
+            groupclick='togglegroup',
+            traceorder='normal',
+            itemsizing='constant'
         ),
         updatemenus=[dict(
             type='buttons',
             direction='left',
-            x=0, y=-0.14,
+            x=0, y=-0.10,
             xanchor='left', yanchor='top',
             showactive=False,
             buttons=[
@@ -498,10 +506,14 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         )],
         sliders=[dict(
             active=0,
-            x=0.15, y=-0.14,
+            x=0.16, y=-0.30,
             xanchor='left', yanchor='top',
-            len=0.83,
-            currentvalue=dict(prefix='날짜: '),
+            len=0.82,
+            currentvalue=dict(
+                prefix='날짜: ',
+                xanchor='center',
+                font=dict(size=11)
+            ),
             transition=dict(duration=0),
             steps=slider_steps
         )]
