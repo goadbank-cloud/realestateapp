@@ -1,7 +1,9 @@
-import streamlit as st
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import streamlit.components.v1 as components
+import json
 
 # --- 페이지 기본 설정 ---
 st.set_page_config(
@@ -177,8 +179,7 @@ else:
 
     st.plotly_chart(fig, use_container_width=True)
 
-# ======가속도 추가부분 시작=======
-
+# 가속도 시작
 
 # ================================================================
 # 매매/전세 증감률 가속도 사분면 분석
@@ -539,9 +540,7 @@ with acc_col2:
         color_map
     )
 
-
-# =======가속도 추가부분 끝========
-
+# 가속도 끝
 
 st.divider() 
 mask_chg = (df_chg["날짜"] >= pd.to_datetime(start_date)) & \
