@@ -233,7 +233,12 @@ def add_quadrant_columns(data, value_col, accel_col):
 
 
 def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_map):
-    """가속도 사분면을 그리고 Plotly 애니메이션으로 시간 흐름을 재생한다."""
+    '''가속도 사분면을 브라우저에서 직접 갱신한다.
+
+    Streamlit 서버 재실행에 의존하지 않고 Plotly.js + native range input을 사용하므로
+    두 날짜 핸들을 마우스로 잡고 이동하는 동안 input 이벤트마다 그래프가 즉시 갱신된다.
+    범례 ON/OFF 상태도 브라우저 state로 유지한다.
+    '''
     data = data[
         (data['날짜'] >= pd.to_datetime(start_date)) &
         (data['날짜'] <= pd.to_datetime(end_date)) &
@@ -255,302 +260,258 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         '하락가속': '#636EFA'
     }
 
-    # 전체 축 범위는 애니메이션 중에도 고정한다.
     x_min, x_max = data[x_col].min(), data[x_col].max()
     y_min, y_max = data[accel_col].min(), data[accel_col].max()
     x_abs = max(abs(x_min), abs(x_max), 0.0001) * 1.18
     y_abs = max(abs(y_min), abs(y_max), 0.0001) * 1.18
 
     dates = sorted(data['날짜'].dropna().unique())
+    date_strings = [pd.Timestamp(d).strftime('%Y-%m-%d') for d in dates]
 
-    # 가속도 그래프 내부에서 별도로 움직일 수 있는 시작/끝 구간.
-    # 실제 컨트롤은 그래프 아래에 표시하고, 값은 session_state로 유지한다.
-    range_key = f'acc_range_v2_{value_col}'
-    default_range = (pd.Timestamp(dates[0]).date(), pd.Timestamp(dates[-1]).date())
-    saved_range = st.session_state.get(range_key, default_range)
-    try:
-        saved_range = (pd.Timestamp(saved_range[0]).date(), pd.Timestamp(saved_range[1]).date())
-    except Exception:
-        saved_range = default_range
-    # 상위 날짜 필터가 바뀌면 기존 두 핸들을 새 범위 안으로 보정한다.
-    saved_range = (
-        max(saved_range[0], default_range[0]),
-        min(saved_range[1], default_range[1])
-    )
-    if saved_range[0] > saved_range[1]:
-        saved_range = default_range
-    st.session_state[range_key] = saved_range
-
-    acc_start = pd.to_datetime(saved_range[0])
-    acc_end = pd.to_datetime(saved_range[1])
-
-    # 선택된 구간에 맞춰 애니메이션 프레임도 시작~끝으로 제한한다.
-    dates = [d for d in dates if pd.Timestamp(d) >= acc_start and pd.Timestamp(d) <= acc_end]
-    if not dates:
-        st.info(f'{title} 선택 구간에 데이터가 없습니다.')
-        return
-
-    # 지역별 데이터 준비
-    region_data = {}
+    regions_payload = []
     for region in selected_regions:
-        rdf = data[(data['지역'] == region) &
-                   (data['날짜'] >= acc_start) &
-                   (data['날짜'] <= acc_end)].sort_values('날짜').copy()
-        if not rdf.empty:
-            region_data[region] = rdf
+        rdf = data[data['지역'] == region].sort_values('날짜').copy()
+        if rdf.empty:
+            continue
+        points = []
+        for _, row in rdf.iterrows():
+            points.append({
+                'date': pd.Timestamp(row['날짜']).strftime('%Y-%m-%d'),
+                'x': float(row[x_col]),
+                'y': float(row[accel_col]),
+                'q': row['사분면']
+            })
+        regions_payload.append({
+            'name': str(region),
+            'color': region_color_map.get(region, '#333333'),
+            'points': points
+        })
 
-    if not region_data:
+    if not regions_payload or not dates:
         st.info(f'{title} 데이터가 없습니다.')
         return
 
-    fig_acc = go.Figure()
+    payload = {
+        'title': title,
+        'dates': date_strings,
+        'regions': regions_payload,
+        'xAbs': float(x_abs),
+        'yAbs': float(y_abs),
+        'quadrantColors': quadrant_colors
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
 
-    # ------------------------------------------------------------------
-    # 기본 프레임: 시작일의 상태
-    # 각 지역당
-    #   1) 경로 + 점 (지역 범례 담당)
-    #   2) START
-    #   3) 현재 끝점 + 지역명
-    # 의 3개 trace를 만든다.
-    # ------------------------------------------------------------------
-    for region in selected_regions:
-        rdf = region_data.get(region)
-        if rdf is None:
-            continue
+    component_html = f'''<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+html,body {{ margin:0; padding:0; background:#fff; font-family:Arial,"Noto Sans KR",sans-serif; overflow:hidden; }}
+#plot {{ width:100%; height:610px; }}
+.controls {{ margin:4px 20px 0 55px; }}
+.buttons {{ display:flex; gap:6px; margin-bottom:12px; }}
+button {{ background:#fff; border:1px solid #b8c7dd; color:#607a9d; border-radius:3px; padding:7px 14px; font-size:13px; cursor:pointer; }}
+button:hover {{ background:#f4f7fb; }}
+.range-wrap {{ position:relative; height:46px; margin-top:2px; }}
+.range-track {{ position:absolute; left:0; right:0; top:13px; height:4px; background:#d7e0ed; border-radius:3px; }}
+.range-selected {{ position:absolute; top:13px; height:4px; background:#9eb6d8; border-radius:3px; }}
+input[type=range] {{ position:absolute; left:0; top:0; width:100%; height:30px; margin:0; background:transparent; pointer-events:none; -webkit-appearance:none; appearance:none; }}
+input[type=range]::-webkit-slider-runnable-track {{ height:4px; background:transparent; }}
+input[type=range]::-moz-range-track {{ height:4px; background:transparent; }}
+input[type=range]::-webkit-slider-thumb {{ -webkit-appearance:none; appearance:none; width:20px; height:20px; border-radius:50%; background:#fff; border:1px solid #9eb6d8; box-shadow:0 1px 2px rgba(0,0,0,.12); pointer-events:auto; cursor:pointer; margin-top:-8px; }}
+input[type=range]::-moz-range-thumb {{ width:20px; height:20px; border-radius:50%; background:#fff; border:1px solid #9eb6d8; box-shadow:0 1px 2px rgba(0,0,0,.12); pointer-events:auto; cursor:pointer; }}
+#startRange {{ z-index:5; }}
+#endRange {{ z-index:4; }}
+.range-labels {{ display:flex; justify-content:space-between; margin-top:2px; color:#607a9d; font-size:11px; }}
+.current {{ text-align:center; color:#607a9d; font-size:12px; margin-bottom:5px; }}
+.hint {{ color:#888; font-size:10px; text-align:center; margin-top:1px; }}
+</style>
+</head>
+<body>
+<div id="plot"></div>
+<div class="controls">
+  <div class="buttons">
+    <button id="play" type="button">▶ 재생</button>
+    <button id="pause" type="button">Ⅱ 일시정지</button>
+  </div>
+  <div class="current" id="currentDate"></div>
+  <div class="range-wrap">
+    <div class="range-track"></div>
+    <div class="range-selected" id="selectedBar"></div>
+    <input id="startRange" type="range" min="0" max="0" value="0" step="1" aria-label="분석 시작점">
+    <input id="endRange" type="range" min="0" max="0" value="0" step="1" aria-label="분석 끝점">
+  </div>
+  <div class="range-labels"><span id="startLabel"></span><span id="endLabel"></span></div>
+  <div class="hint">왼쪽 핸들 = 시작점 · 오른쪽 핸들 = 끝점 · 핸들을 잡고 이동하는 동안 그래프가 실시간 갱신됩니다.</div>
+</div>
+<script>
+(function() {{
+  const P = {payload_json};
+  const dates = P.dates;
+  const regions = P.regions;
+  const qColors = P.quadrantColors;
+  const plot = document.getElementById('plot');
+  const startRange = document.getElementById('startRange');
+  const endRange = document.getElementById('endRange');
+  const currentDate = document.getElementById('currentDate');
+  const startLabel = document.getElementById('startLabel');
+  const endLabel = document.getElementById('endLabel');
+  const selectedBar = document.getElementById('selectedBar');
+  const playBtn = document.getElementById('play');
+  const pauseBtn = document.getElementById('pause');
 
-        reg_color = region_color_map.get(region, '#333333')
-        initial = rdf[rdf['날짜'] <= dates[0]].copy()
-        if initial.empty:
-            initial = rdf.iloc[[0]].copy()
+  let startIdx = 0;
+  let endIdx = dates.length - 1;
+  let playIdx = endIdx;
+  let timer = null;
+  let playing = false;
+  // 서버 rerun과 무관한 브라우저 상태: 범례를 꺼 놓으면 핸들 이동에도 계속 꺼져 있다.
+  const regionVisible = Object.fromEntries(regions.map(r => [r.name, true]));
 
-        marker_colors = [quadrant_colors[q] for q in initial['사분면']]
+  function pointsFor(region, lo, hi) {{
+    const arr = region.points.filter(p => p.date >= dates[lo] && p.date <= dates[hi]);
+    return arr.length ? arr : region.points.filter(p => p.date <= dates[hi]).slice(-1);
+  }}
 
-        # 지역 경로 + 점: 지역 범례에서 이 trace를 켜고 끄면
-        # 같은 legendgroup의 START/끝점도 함께 표시/숨김된다.
-        fig_acc.add_trace(go.Scatter(
-            x=initial[x_col],
-            y=initial[accel_col],
-            mode='lines+markers',
-            name=region,
-            legendgroup=region,
-            line=dict(color=reg_color, width=2),
-            marker=dict(color=marker_colors, size=6, opacity=0.82),
-            customdata=initial[['지역', '날짜', x_col, accel_col]].to_numpy(),
-            hovertemplate=(
-                '<b>%{customdata[0]}</b><br>'
-                '날짜: %{customdata[1]}<br>'
-                '증감률: %{customdata[2]:.4f}<br>'
-                '가속도: %{customdata[3]:.4f}<extra></extra>'
-            ),
-            showlegend=True
-        ))
+  function firstPoint(region, lo, hi) {{
+    const arr = region.points.filter(p => p.date >= dates[lo] && p.date <= dates[hi]);
+    return arr.length ? arr[0] : region.points.find(p => p.date >= dates[lo]) || region.points[0];
+  }}
 
-        first = rdf.iloc[0]
-        fig_acc.add_trace(go.Scatter(
-            x=[first[x_col]],
-            y=[first[accel_col]],
-            mode='text',
-            text=['START'],
-            textposition='bottom center',
-            textfont=dict(size=9, color='#555555'),
-            legendgroup=region,
-            showlegend=False,
-            hoverinfo='skip'
-        ))
+  function buildData(lo, hi, frameIdx) {{
+    const traces = [];
+    const currentIdx = Math.max(lo, Math.min(frameIdx, hi));
+    regions.forEach((r) => {{
+      const path = pointsFor(r, lo, currentIdx);
+      const first = firstPoint(r, lo, hi);
+      const last = path[path.length - 1];
+      const markerColors = path.map(p => qColors[p.q]);
+      const vis = regionVisible[r.name] ? true : 'legendonly';
 
-        last = initial.iloc[-1]
-        fig_acc.add_trace(go.Scatter(
-            x=[last[x_col]],
-            y=[last[accel_col]],
-            mode='markers+text',
-            text=[region],
-            textposition='top center',
-            textfont=dict(size=10),
-            marker=dict(color=reg_color, size=10),
-            legendgroup=region,
-            showlegend=False,
-            hovertemplate=(
-                f'<b>{region}</b><br>'
-                '날짜: %{x}<br>'
-                '증감률: %{y:.4f}<extra></extra>'
-            )
-        ))
+      traces.push({{
+        x:path.map(p=>p.x), y:path.map(p=>p.y), mode:'lines+markers',
+        name:r.name, legendgroup:r.name, showlegend:true, visible:vis,
+        line:{{color:r.color,width:2}}, marker:{{color:markerColors,size:6,opacity:.82}},
+        customdata:path.map(p=>[r.name,p.date,p.x,p.y]),
+        hovertemplate:'<b>%{{customdata[0]}}</b><br>날짜: %{{customdata[1]}}<br>증감률: %{{customdata[2]:.4f}}<br>가속도: %{{customdata[3]:.4f}}<extra></extra>'
+      }});
+      traces.push({{
+        x:[first.x], y:[first.y], mode:'text', text:['START'], textposition:'bottom center',
+        textfont:{{size:9,color:'#555'}}, legendgroup:r.name, showlegend:false, visible:vis, hoverinfo:'skip'
+      }});
+      traces.push({{
+        x:[last.x], y:[last.y], mode:'markers+text', text:[r.name], textposition:'top center',
+        textfont:{{size:10}}, marker:{{color:r.color,size:10}}, legendgroup:r.name,
+        showlegend:false, visible:vis, hoverinfo:'skip'
+      }});
+    }});
+    return traces;
+  }}
 
-    # ------------------------------------------------------------------
-    # 사분면 배경
-    # ------------------------------------------------------------------
-    rects = [
-        (0, x_abs, 0, y_abs, 'rgba(239,85,59,0.10)'),
-        (-x_abs, 0, 0, y_abs, 'rgba(0,204,150,0.10)'),
-        (-x_abs, 0, -y_abs, 0, 'rgba(99,110,250,0.10)'),
-        (0, x_abs, -y_abs, 0, 'rgba(255,161,90,0.10)')
-    ]
-    for x0, x1, y0, y1, fill in rects:
-        fig_acc.add_shape(
-            type='rect', x0=x0, x1=x1, y0=y0, y1=y1,
-            fillcolor=fill, line_width=0, layer='below'
-        )
+  function makeLayout() {{
+    const xa=P.xAbs, ya=P.yAbs;
+    return {{
+      title:{{text:P.title,x:0,xanchor:'left',y:.985,yanchor:'top',font:{{size:16}}}},
+      xaxis:{{title:'주간 증감률 (지수)',range:[-xa,xa],zeroline:false}},
+      yaxis:{{title:'가속도 (증감률 변화)',range:[-ya,ya],zeroline:false}},
+      template:'plotly_white', height:610, margin:{{t:95,b:70,l:55,r:25}}, hovermode:'closest',
+      legend:{{orientation:'h',yanchor:'bottom',y:1.02,xanchor:'left',x:0,title:'지역',groupclick:'togglegroup',traceorder:'normal',itemsizing:'constant'}},
+      shapes:[
+        {{type:'rect',x0:0,x1:xa,y0:0,y1:ya,fillcolor:'rgba(239,85,59,.10)',line_width:0,layer:'below'}},
+        {{type:'rect',x0:-xa,x1:0,y0:0,y1:ya,fillcolor:'rgba(0,204,150,.10)',line_width:0,layer:'below'}},
+        {{type:'rect',x0:-xa,x1:0,y0:-ya,y1:0,fillcolor:'rgba(99,110,250,.10)',line_width:0,layer:'below'}},
+        {{type:'rect',x0:0,x1:xa,y0:-ya,y1:0,fillcolor:'rgba(255,161,90,.10)',line_width:0,layer:'below'}}
+      ],
+      annotations:[
+        {{x:xa*.68,y:ya*.87,text:'<b>상승가속</b>',showarrow:false}},
+        {{x:-xa*.68,y:ya*.87,text:'<b>하락반등</b>',showarrow:false}},
+        {{x:-xa*.68,y:-ya*.87,text:'<b>하락가속</b>',showarrow:false}},
+        {{x:xa*.68,y:-ya*.87,text:'<b>상승둔화</b>',showarrow:false}}
+      ]
+    }};
+  }}
 
-    fig_acc.add_hline(y=0, line_width=1, line_color='#999999')
-    fig_acc.add_vline(x=0, line_width=1, line_color='#999999')
+  async function render(lo, hi, frameIdx) {{
+    frameIdx = Math.max(lo, Math.min(frameIdx, hi));
+    playIdx = frameIdx;
+    const newData = buildData(lo, hi, frameIdx);
+    if (!plot.data) {{
+      await Plotly.newPlot(plot, newData, makeLayout(), {{responsive:true,displaylogo:false}});
+    }} else {{
+      await Plotly.react(plot, newData, makeLayout(), {{responsive:true,displaylogo:false}});
+    }}
+    currentDate.textContent='날짜: '+dates[frameIdx];
+    startLabel.textContent=dates[lo];
+    endLabel.textContent=dates[hi];
+    const max=Math.max(1,dates.length-1);
+    selectedBar.style.left=(lo/max*100)+'%';
+    selectedBar.style.width=((hi-lo)/max*100)+'%';
+  }}
 
-    # 사분면 명칭
-    fig_acc.add_annotation(x=x_abs * 0.68, y=y_abs * 0.87,
-                           text='<b>상승가속</b>', showarrow=False)
-    fig_acc.add_annotation(x=-x_abs * 0.68, y=y_abs * 0.87,
-                           text='<b>하락반등</b>', showarrow=False)
-    fig_acc.add_annotation(x=-x_abs * 0.68, y=-y_abs * 0.87,
-                           text='<b>하락가속</b>', showarrow=False)
-    fig_acc.add_annotation(x=x_abs * 0.68, y=-y_abs * 0.87,
-                           text='<b>상승둔화</b>', showarrow=False)
+  function bindLegendHandler() {{
+    if (plot.__legendBound) return;
+    plot.__legendBound = true;
+    plot.on('plotly_legendclick', function(e) {{
+      const regionIndex=Math.floor(e.curveNumber/3);
+      const r=regions[regionIndex];
+      if (!r) return false;
+      regionVisible[r.name]=!regionVisible[r.name];
+      render(startIdx,endIdx,Math.min(playIdx,endIdx));
+      return false;
+    }});
+  }}
 
-    # ------------------------------------------------------------------
-    # 애니메이션 프레임
-    # 날짜별로 START는 고정하고, 경로와 현재 끝점을 해당 날짜까지 이동시킨다.
-    # ------------------------------------------------------------------
-    frames = []
-    for frame_date in dates:
-        frame_traces = []
+  function updateFromInputs(source) {{
+    let a=parseInt(startRange.value,10);
+    let b=parseInt(endRange.value,10);
+    if (a>=b) {{
+      if (source==='start') a=Math.max(0,b-1);
+      else b=Math.min(dates.length-1,a+1);
+      startRange.value=String(a);
+      endRange.value=String(b);
+    }}
+    startIdx=a; endIdx=b;
+    stop();
+    // input 이벤트는 pointer를 잡고 이동하는 동안 계속 발생하므로 서버 rerun 없이 실시간 갱신된다.
+    render(startIdx,endIdx,endIdx);
+  }}
 
-        for region in selected_regions:
-            rdf = region_data.get(region)
-            if rdf is None:
-                continue
+  function stop() {{
+    if (timer) {{ clearInterval(timer); timer=null; }}
+    playing=false;
+  }}
 
-            visible = rdf[rdf['날짜'] <= frame_date].copy()
-            if visible.empty:
-                visible = rdf.iloc[[0]].copy()
+  function play() {{
+    stop();
+    playing=true;
+    playIdx=startIdx;
+    render(startIdx,endIdx,playIdx);
+    timer=setInterval(function() {{
+      if (!playing) return;
+      playIdx++;
+      render(startIdx,endIdx,playIdx);
+      if (playIdx>=endIdx) stop();
+    }},180);
+  }}
 
-            marker_colors = [quadrant_colors[q] for q in visible['사분면']]
-            reg_color = region_color_map.get(region, '#333333')
+  startRange.max=String(dates.length-1);
+  endRange.max=String(dates.length-1);
+  startRange.value='0';
+  endRange.value=String(dates.length-1);
+  startRange.addEventListener('input',()=>updateFromInputs('start'));
+  endRange.addEventListener('input',()=>updateFromInputs('end'));
+  playBtn.addEventListener('click',play);
+  pauseBtn.addEventListener('click',stop);
 
-            # 1. 현재까지의 경로
-            frame_traces.append(go.Scatter(
-                x=visible[x_col].tolist(),
-                y=visible[accel_col].tolist(),
-                marker=dict(color=marker_colors),
-                customdata=visible[['지역', '날짜', x_col, accel_col]].to_numpy()
-            ))
+  // 기본값은 전체 기간 + 애니메이션 완성 상태.
+  render(0,dates.length-1,dates.length-1).then(bindLegendHandler);
+}})();
+</script>
+</body>
+</html>'''
 
-            # 2. START는 고정
-            first = rdf.iloc[0]
-            frame_traces.append(go.Scatter(
-                x=[first[x_col]], y=[first[accel_col]],
-                text=['START']
-            ))
-
-            # 3. 현재 끝점 + 지역명
-            last = visible.iloc[-1]
-            frame_traces.append(go.Scatter(
-                x=[last[x_col]], y=[last[accel_col]],
-                text=[region],
-                marker=dict(color=reg_color)
-            ))
-
-        frames.append(go.Frame(
-            name=pd.Timestamp(frame_date).strftime('%Y-%m-%d'),
-            data=frame_traces
-        ))
-
-    fig_acc.frames = frames
-
-    # 기본 화면은 "애니메이션이 모두 완료된 상태"로 표시한다.
-    # 즉, 선택된 시작일~끝일까지의 전체 경로와 끝점을 처음부터 보여준다.
-    # 재생 버튼을 누르면 첫 프레임(START)부터 끝 프레임까지 다시 재생한다.
-    if frames:
-        final_frame = frames[-1]
-        for trace, frame_trace in zip(fig_acc.data, final_frame.data):
-            if hasattr(frame_trace, 'x') and frame_trace.x is not None:
-                trace.x = frame_trace.x
-            if hasattr(frame_trace, 'y') and frame_trace.y is not None:
-                trace.y = frame_trace.y
-            if hasattr(frame_trace, 'text') and frame_trace.text is not None:
-                trace.text = frame_trace.text
-            if getattr(frame_trace, 'marker', None) is not None:
-                trace.marker.color = frame_trace.marker.color
-
-    # ▶ 기본 화면은 완료 상태이며, 재생 버튼은 선택한 시작~끝 구간을 처음부터 재생한다.
-    fig_acc.update_layout(
-        uirevision=f'acceleration-{value_col}',
-        title=dict(
-            text=title,
-            x=0.0,
-            xanchor='left',
-            y=0.985,
-            yanchor='top'
-        ),
-        xaxis_title='주간 증감률 (지수)',
-        yaxis_title='가속도 (증감률 변화)',
-        xaxis=dict(range=[-x_abs, x_abs], zeroline=False),
-        yaxis=dict(range=[-y_abs, y_abs], zeroline=False),
-        template='plotly_white',
-        height=820,
-        # x축 제목/눈금을 가리지 않도록 플레이 버튼을 그래프 아래에 배치한다.
-        margin=dict(t=220, b=95, l=55, r=25),
-        hovermode='closest',
-        legend=dict(
-            orientation='h',
-            yanchor='bottom', y=1.015,
-            xanchor='left', x=0,
-            title='지역',
-            groupclick='togglegroup',
-            traceorder='normal',
-            itemsizing='constant'
-        ),
-        updatemenus=[dict(
-            type='buttons',
-            direction='left',
-            x=0.0, y=-0.18,
-            xanchor='left', yanchor='top',
-            showactive=False,
-            buttons=[
-                dict(
-                    label='▶ 재생',
-                    method='animate',
-                    args=[None, {
-                        'frame': {'duration': 180, 'redraw': True},
-                        'transition': {'duration': 0},
-                        'fromcurrent': False,
-                        'mode': 'immediate'
-                    }]
-                ),
-                dict(
-                    label='⏸ 일시정지',
-                    method='animate',
-                    args=[[None], {
-                        'frame': {'duration': 0, 'redraw': False},
-                        'transition': {'duration': 0},
-                        'mode': 'immediate'
-                    }]
-                )
-            ]
-        )]
-    )
-
-    st.plotly_chart(fig_acc, use_container_width=True, key=f'acc_{value_col}')
-
-    # 그래프 아래에 두 개의 핸들이 있는 구간 슬라이더를 표시한다.
-    # 왼쪽 핸들 = 시작점, 오른쪽 핸들 = 끝점.
-    # Streamlit slider의 key 자체를 범위 상태로 사용한다.
-    # 사용자가 어느 핸들이든 놓는 즉시 해당 구간으로 앱이 다시 실행되고,
-    # Plotly는 동일한 uirevision을 유지하므로 사용자가 꺼 둔 범례 상태도 유지한다.
-    st.slider(
-        '분석 구간: 시작점 ↔ 끝점 (두 핸들을 각각 이동)',
-        min_value=default_range[0],
-        max_value=default_range[1],
-        value=saved_range,
-        format='YYYY-MM-DD',
-        key=range_key,
-        on_change=lambda: None,
-    )
-    new_range = st.session_state[range_key]
-    if new_range != saved_range:
-        # 범위가 바뀐 경우 다음 실행에서 새 범위를 즉시 반영한다.
-        st.rerun()
-    st.caption(
-        f'시작점: {acc_start.strftime("%Y-%m-%d")}   |   끝점: {acc_end.strftime("%Y-%m-%d")}  '
-        '— 기본값은 전체 기간이며, 두 핸들을 각각 움직이면 선택 구간의 전체 경로가 즉시 다시 그려집니다. 재생은 선택한 시작점부터 끝점까지 진행됩니다.'
-    )
+    components.html(component_html, height=820, scrolling=False)
 
 
 # 가속도 데이터 계산
