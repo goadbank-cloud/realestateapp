@@ -179,7 +179,7 @@ else:
 
 # ======가속도 추가부분 시작=======
 
-# ================================================================
+
 # 매매/전세 증감률 가속도 사분면 분석
 #   X축 : 해당 주의 증감률
 #   Y축 : 가속도 = 해당 주 증감률 - 직전 주 증감률
@@ -262,10 +262,39 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
 
     dates = sorted(data['날짜'].dropna().unique())
 
+    # 가속도 그래프 내부에서 별도로 움직일 수 있는 시작/끝 구간.
+    # 실제 컨트롤은 그래프 아래에 표시하고, 값은 session_state로 유지한다.
+    range_key = f'acc_range_{value_col}'
+    default_range = (pd.Timestamp(dates[0]).date(), pd.Timestamp(dates[-1]).date())
+    saved_range = st.session_state.get(range_key, default_range)
+    try:
+        saved_range = (pd.Timestamp(saved_range[0]).date(), pd.Timestamp(saved_range[1]).date())
+    except Exception:
+        saved_range = default_range
+    # 상위 날짜 필터가 바뀌면 기존 두 핸들을 새 범위 안으로 보정한다.
+    saved_range = (
+        max(saved_range[0], default_range[0]),
+        min(saved_range[1], default_range[1])
+    )
+    if saved_range[0] > saved_range[1]:
+        saved_range = default_range
+    st.session_state[range_key] = saved_range
+
+    acc_start = pd.to_datetime(saved_range[0])
+    acc_end = pd.to_datetime(saved_range[1])
+
+    # 선택된 구간에 맞춰 애니메이션 프레임도 시작~끝으로 제한한다.
+    dates = [d for d in dates if pd.Timestamp(d) >= acc_start and pd.Timestamp(d) <= acc_end]
+    if not dates:
+        st.info(f'{title} 선택 구간에 데이터가 없습니다.')
+        return
+
     # 지역별 데이터 준비
     region_data = {}
     for region in selected_regions:
-        rdf = data[data['지역'] == region].sort_values('날짜').copy()
+        rdf = data[(data['지역'] == region) &
+                   (data['날짜'] >= acc_start) &
+                   (data['날짜'] <= acc_end)].sort_values('날짜').copy()
         if not rdf.empty:
             region_data[region] = rdf
 
@@ -437,20 +466,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
             if getattr(frame_trace, 'marker', None) is not None:
                 trace.marker.color = frame_trace.marker.color
 
-    # 날짜 슬라이더 + ▶ 플레이 버튼
-    slider_steps = []
-    for d in dates:
-        date_str = pd.Timestamp(d).strftime('%Y-%m-%d')
-        slider_steps.append(dict(
-            label=date_str,
-            method='animate',
-            args=[[date_str], {
-                'mode': 'immediate',
-                'frame': {'duration': 120, 'redraw': True},
-                'transition': {'duration': 0}
-            }]
-        ))
-
+    # ▶ 플레이 버튼은 위에서 선택한 시작~끝 구간의 frames만 재생한다.
     fig_acc.update_layout(
         title=dict(
             text=title,
@@ -465,9 +481,8 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         yaxis=dict(range=[-y_abs, y_abs], zeroline=False),
         template='plotly_white',
         height=820,
-        # 그래프 하단에 x축 눈금/축제목 → 재생버튼 → 슬라이더 순으로
-        # 충분한 공간을 확보하여 컨트롤이 눈금이나 축제목을 가리지 않게 한다.
-        margin=dict(t=220, b=190, l=55, r=25),
+        # x축 제목/눈금을 가리지 않도록 플레이 버튼을 그래프 아래에 배치한다.
+        margin=dict(t=220, b=95, l=55, r=25),
         hovermode='closest',
         legend=dict(
             orientation='h',
@@ -505,23 +520,27 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
                     }]
                 )
             ]
-        )],
-        sliders=[dict(
-            active=0,
-            x=0.16, y=-0.40,
-            xanchor='left', yanchor='top',
-            len=0.82,
-            currentvalue=dict(
-                prefix='날짜: ',
-                xanchor='center',
-                font=dict(size=11)
-            ),
-            transition=dict(duration=0),
-            steps=slider_steps
         )]
     )
 
     st.plotly_chart(fig_acc, use_container_width=True, key=f'acc_{value_col}')
+
+    # 그래프 아래에 두 개의 핸들이 있는 구간 슬라이더를 표시한다.
+    # 왼쪽 핸들 = 시작점, 오른쪽 핸들 = 끝점.
+    new_range = st.slider(
+        '분석 구간: 시작 ↔ 끝',
+        min_value=default_range[0],
+        max_value=default_range[1],
+        value=saved_range,
+        format='YYYY-MM-DD',
+        key=range_key
+    )
+    if new_range != saved_range:
+        st.rerun()
+    st.caption(
+        f'시작: {acc_start.strftime("%Y-%m-%d")}   |   끝: {acc_end.strftime("%Y-%m-%d")}  '
+        '— 슬라이더의 두 핸들을 각각 움직여 분석 구간을 조절하세요.'
+    )
 
 
 # 가속도 데이터 계산
