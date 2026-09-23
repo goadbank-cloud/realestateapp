@@ -180,6 +180,7 @@ else:
 # ======가속도 추가부분 시작=======
 
 
+# ================================================================
 # 매매/전세 증감률 가속도 사분면 분석
 #   X축 : 해당 주의 증감률
 #   Y축 : 가속도 = 해당 주 증감률 - 직전 주 증감률
@@ -264,7 +265,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
 
     # 가속도 그래프 내부에서 별도로 움직일 수 있는 시작/끝 구간.
     # 실제 컨트롤은 그래프 아래에 표시하고, 값은 session_state로 유지한다.
-    range_key = f'acc_range_{value_col}'
+    range_key = f'acc_range_v2_{value_col}'
     default_range = (pd.Timestamp(dates[0]).date(), pd.Timestamp(dates[-1]).date())
     saved_range = st.session_state.get(range_key, default_range)
     try:
@@ -453,10 +454,12 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
 
     fig_acc.frames = frames
 
-    # 첫 프레임으로 초기 상태 설정
+    # 기본 화면은 "애니메이션이 모두 완료된 상태"로 표시한다.
+    # 즉, 선택된 시작일~끝일까지의 전체 경로와 끝점을 처음부터 보여준다.
+    # 재생 버튼을 누르면 첫 프레임(START)부터 끝 프레임까지 다시 재생한다.
     if frames:
-        initial_frame = frames[0]
-        for trace, frame_trace in zip(fig_acc.data, initial_frame.data):
+        final_frame = frames[-1]
+        for trace, frame_trace in zip(fig_acc.data, final_frame.data):
             if hasattr(frame_trace, 'x') and frame_trace.x is not None:
                 trace.x = frame_trace.x
             if hasattr(frame_trace, 'y') and frame_trace.y is not None:
@@ -466,7 +469,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
             if getattr(frame_trace, 'marker', None) is not None:
                 trace.marker.color = frame_trace.marker.color
 
-    # ▶ 플레이 버튼은 위에서 선택한 시작~끝 구간의 frames만 재생한다.
+    # ▶ 기본 화면은 완료 상태이며, 재생 버튼은 선택한 시작~끝 구간을 처음부터 재생한다.
     fig_acc.update_layout(
         title=dict(
             text=title,
@@ -506,7 +509,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
                     args=[None, {
                         'frame': {'duration': 180, 'redraw': True},
                         'transition': {'duration': 0},
-                        'fromcurrent': True,
+                        'fromcurrent': False,
                         'mode': 'immediate'
                     }]
                 ),
@@ -528,7 +531,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
     # 그래프 아래에 두 개의 핸들이 있는 구간 슬라이더를 표시한다.
     # 왼쪽 핸들 = 시작점, 오른쪽 핸들 = 끝점.
     new_range = st.slider(
-        '분석 구간: 시작 ↔ 끝',
+        '분석 구간: 시작점 ↔ 끝점 (두 핸들을 각각 이동)',
         min_value=default_range[0],
         max_value=default_range[1],
         value=saved_range,
@@ -538,8 +541,8 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
     if new_range != saved_range:
         st.rerun()
     st.caption(
-        f'시작: {acc_start.strftime("%Y-%m-%d")}   |   끝: {acc_end.strftime("%Y-%m-%d")}  '
-        '— 슬라이더의 두 핸들을 각각 움직여 분석 구간을 조절하세요.'
+        f'시작점: {acc_start.strftime("%Y-%m-%d")}   |   끝점: {acc_end.strftime("%Y-%m-%d")}  '
+        '— 기본값은 전체 기간이며, 두 핸들을 각각 움직이면 선택 구간의 전체 경로가 즉시 다시 그려집니다. 재생은 선택한 시작점부터 끝점까지 진행됩니다.'
     )
 
 
