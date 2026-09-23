@@ -454,8 +454,8 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
     fig_acc.update_layout(
         title=dict(
             text=title,
-            x=0.5,
-            xanchor='center',
+            x=0.0,
+            xanchor='left',
             y=0.985,
             yanchor='top'
         ),
@@ -464,8 +464,10 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         xaxis=dict(range=[-x_abs, x_abs], zeroline=False),
         yaxis=dict(range=[-y_abs, y_abs], zeroline=False),
         template='plotly_white',
-        height=540,
-        margin=dict(t=245, b=145, l=55, r=25),
+        height=610,
+        # 그래프 하단에 x축 눈금/축제목 → 재생버튼 → 슬라이더 순으로
+        # 충분한 공간을 확보하여 컨트롤이 눈금이나 축제목을 가리지 않게 한다.
+        margin=dict(t=245, b=220, l=55, r=25),
         hovermode='closest',
         legend=dict(
             orientation='h',
@@ -479,7 +481,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         updatemenus=[dict(
             type='buttons',
             direction='left',
-            x=0, y=-0.10,
+            x=0.0, y=-0.18,
             xanchor='left', yanchor='top',
             showactive=False,
             buttons=[
@@ -506,7 +508,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         )],
         sliders=[dict(
             active=0,
-            x=0.16, y=-0.30,
+            x=0.16, y=-0.40,
             xanchor='left', yanchor='top',
             len=0.82,
             currentvalue=dict(
