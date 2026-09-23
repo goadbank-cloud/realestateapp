@@ -464,10 +464,10 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
         xaxis=dict(range=[-x_abs, x_abs], zeroline=False),
         yaxis=dict(range=[-y_abs, y_abs], zeroline=False),
         template='plotly_white',
-        height=610,
+        height=820,
         # 그래프 하단에 x축 눈금/축제목 → 재생버튼 → 슬라이더 순으로
         # 충분한 공간을 확보하여 컨트롤이 눈금이나 축제목을 가리지 않게 한다.
-        margin=dict(t=245, b=220, l=55, r=25),
+        margin=dict(t=220, b=190, l=55, r=25),
         hovermode='closest',
         legend=dict(
             orientation='h',
