@@ -471,6 +471,7 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
 
     # ▶ 기본 화면은 완료 상태이며, 재생 버튼은 선택한 시작~끝 구간을 처음부터 재생한다.
     fig_acc.update_layout(
+        uirevision=f'acceleration-{value_col}',
         title=dict(
             text=title,
             x=0.0,
@@ -530,15 +531,21 @@ def draw_acceleration_quadrant(data, value_col, accel_col, title, region_color_m
 
     # 그래프 아래에 두 개의 핸들이 있는 구간 슬라이더를 표시한다.
     # 왼쪽 핸들 = 시작점, 오른쪽 핸들 = 끝점.
-    new_range = st.slider(
+    # Streamlit slider의 key 자체를 범위 상태로 사용한다.
+    # 사용자가 어느 핸들이든 놓는 즉시 해당 구간으로 앱이 다시 실행되고,
+    # Plotly는 동일한 uirevision을 유지하므로 사용자가 꺼 둔 범례 상태도 유지한다.
+    st.slider(
         '분석 구간: 시작점 ↔ 끝점 (두 핸들을 각각 이동)',
         min_value=default_range[0],
         max_value=default_range[1],
         value=saved_range,
         format='YYYY-MM-DD',
-        key=range_key
+        key=range_key,
+        on_change=lambda: None,
     )
+    new_range = st.session_state[range_key]
     if new_range != saved_range:
+        # 범위가 바뀐 경우 다음 실행에서 새 범위를 즉시 반영한다.
         st.rerun()
     st.caption(
         f'시작점: {acc_start.strftime("%Y-%m-%d")}   |   끝점: {acc_end.strftime("%Y-%m-%d")}  '
